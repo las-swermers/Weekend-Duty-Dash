@@ -73,15 +73,26 @@ function unique<T>(items: T[]): T[] {
   return Array.from(new Set(items));
 }
 
+function stripTags(s: string): string {
+  return s
+    .replace(/<[^>]+>/g, "")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&amp;/g, "&");
+}
+
 // Pull anything that looks like an API surface reference out of the
 // public Orah docs HTML: full URLs on a *.orah.com host, METHOD /path
-// lines, header examples, and section anchors. Cheap regex; we don't
-// need to parse the DOM, just find hints to feed back into the probe.
+// lines, header examples, section anchors, and the actual code-block
+// contents (curl/JSON examples) that document request/response shapes.
 function extractApiHints(html: string): {
   fullUrls: string[];
   pathLines: string[];
   headerHints: string[];
   sectionIds: string[];
+  codeBlocks: Array<{ lang?: string; text: string }>;
 } {
   const fullUrls = unique(
     Array.from(
@@ -100,18 +111,33 @@ function extractApiHints(html: string): {
   const headerHints = unique(
     Array.from(
       html.matchAll(
-        /(?:[xX]-?[aA][pP][iI]-?[kK]ey|[Aa]uthorization:\s*[Bb]earer|[Bb]earer\s+[A-Za-z0-9]+)/g,
+        /(?:[xX]-?[aA][pP][iI]-?[kK]ey|[Aa]uthorization:\s*[Bb]earer|[Bb]earer\s+[A-Za-z0-9._-]+|--header\s+["'][^"']+["'])/g,
       ),
     ).map((m) => m[0]),
-  ).slice(0, 20);
+  ).slice(0, 30);
 
   const sectionIds = unique(
     Array.from(
       html.matchAll(/<h[1-4][^>]*\sid=["']([^"']+)["']/gi),
     ).map((m) => m[1]),
-  ).slice(0, 80);
+  ).slice(0, 250);
 
-  return { fullUrls, pathLines, headerHints, sectionIds };
+  const codeBlocks: Array<{ lang?: string; text: string }> = [];
+  const preRegex =
+    /<pre[^>]*(?:class=["'][^"']*(?:language-(\w+)|highlight-source-(\w+))[^"']*["'])?[^>]*>([\s\S]*?)<\/pre>/gi;
+  let match: RegExpExecArray | null;
+  while ((match = preRegex.exec(html)) !== null) {
+    const lang = match[1] || match[2];
+    const text = stripTags(match[3]).trim();
+    if (!text) continue;
+    codeBlocks.push({
+      lang: lang || undefined,
+      text: text.length > 1500 ? `${text.slice(0, 1500)}…` : text,
+    });
+    if (codeBlocks.length >= 60) break;
+  }
+
+  return { fullUrls, pathLines, headerHints, sectionIds, codeBlocks };
 }
 
 function safePath(input: string): string | null {
@@ -140,14 +166,21 @@ async function probe(
   path: string,
   header: string,
   key: string,
+  opts: { method?: string; body?: string } = {},
 ): Promise<ProbeResult> {
   const url = `${base}${path}`;
+  const method = opts.method ?? "GET";
   try {
     const res = await fetch(url, {
+      method,
       headers: {
         [header]: headerValue(header, key),
         Accept: "application/json",
+        ...(opts.body !== undefined
+          ? { "Content-Type": "application/json" }
+          : {}),
       },
+      body: opts.body,
       cache: "no-store",
     });
     const text = await res.text();
@@ -285,7 +318,26 @@ export async function GET(req: NextRequest) {
       );
     }
     const base = overrideBase ?? ENV_BASE;
-    const result = await probe(base, path, customHeader, KEY);
+    const method = (params.get("method") ?? "GET").toUpperCase();
+    const bodyParam = params.get("body");
+    let body: string | undefined;
+    if (bodyParam !== null) {
+      try {
+        // Validate JSON shape and re-serialise so we send canonical JSON.
+        body = JSON.stringify(JSON.parse(bodyParam));
+      } catch {
+        return NextResponse.json(
+          { error: "body must be valid JSON" },
+          { status: 400 },
+        );
+      }
+    } else if (method !== "GET") {
+      body = "{}";
+    }
+    const result = await probe(base, path, customHeader, KEY, {
+      method,
+      body,
+    });
     return NextResponse.json(result);
   }
 
