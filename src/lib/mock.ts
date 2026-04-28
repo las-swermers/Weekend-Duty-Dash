@@ -27,12 +27,13 @@ export interface NoPaStudent {
 
 export interface TravelRequest {
   id: number;
+  name?: string;
   initials: string;
   dorm: string;
   destination: string;
   depart: string;
   return: string;
-  status: "approved" | "pending" | "denied";
+  status: "approved" | "pending" | "denied" | "signed-out";
   chaperone: string;
 }
 

@@ -415,6 +415,7 @@ a { color: inherit; }
   border: 1px solid var(--rule);
 }
 .tag--approved { background: var(--moss-soft); color: var(--moss); border-color: transparent; }
+.tag--signed-out { background: var(--moss-soft); color: var(--moss); border-color: transparent; }
 .tag--pending { background: var(--amber-soft); color: var(--amber-ink); border-color: transparent; }
 .tag--overnight { background: var(--coral-soft); color: var(--coral-ink); border-color: transparent; }
 .tag--in { background: var(--paper-3); color: var(--ink-2); }

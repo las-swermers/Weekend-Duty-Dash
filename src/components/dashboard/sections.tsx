@@ -134,9 +134,14 @@ export function NoPaSection({ data }: { data: NoPaStudent[] }) {
 }
 
 export function TravelSection({ data }: { data: TravelRequest[] }) {
+  const signedOut = data.filter((d) => d.status === "signed-out").length;
   const approved = data.filter((d) => d.status === "approved").length;
   const pending = data.filter((d) => d.status === "pending").length;
   const visible = data.slice(0, 6);
+  const sub =
+    signedOut > 0
+      ? `${signedOut} currently signed out.`
+      : `${approved} approved · ${pending} awaiting decision.`;
 
   return (
     <SectionShell
@@ -144,11 +149,11 @@ export function TravelSection({ data }: { data: TravelRequest[] }) {
       num="03"
       title="Travel"
       titleEm="Requests"
-      sub={`${approved} approved · ${pending} awaiting decision.`}
+      sub={sub}
       meta={`${data.length} TOTAL`}
     >
       {data.length === 0 ? (
-        <EmptyState message="No travel requests in this window." />
+        <EmptyState message="No travel records yet for this weekend." />
       ) : (
         <>
           <div role="list">
@@ -157,17 +162,21 @@ export function TravelSection({ data }: { data: TravelRequest[] }) {
                 <div className="row__initials">{t.initials}</div>
                 <div className="row__main">
                   <div className="row__line">
-                    {t.destination}
-                    <span style={{ color: "var(--ink-3)" }}>
-                      {" "}
-                      · {t.chaperone}
-                    </span>
+                    {t.name ? `${t.name} → ${t.destination}` : t.destination}
+                    {t.chaperone && t.chaperone !== "—" && (
+                      <span style={{ color: "var(--ink-3)" }}>
+                        {" "}
+                        · {t.chaperone}
+                      </span>
+                    )}
                   </div>
                   <div className="row__sub">
                     <span>{t.dorm}</span>
                     <span className="sep" />
                     <span>
-                      {t.depart} → {t.return}
+                      {t.return && t.return !== "—"
+                        ? `${t.depart} → ${t.return}`
+                        : `out ${t.depart}`}
                     </span>
                   </div>
                 </div>
