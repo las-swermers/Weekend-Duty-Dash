@@ -8,6 +8,7 @@ import type {
   OrahEnvelope,
   OrahHouse,
   OrahLocation,
+  OrahLocationRecord,
   OrahPastoralRecord,
   OrahStudent,
 } from "@/types/orah";
@@ -136,6 +137,38 @@ export function buildStudentMap(
   students: OrahStudent[],
 ): Map<number, OrahStudent> {
   return new Map(students.map((s) => [s.id, s]));
+}
+
+// Paginate through location-record/timeline for a date range. Same
+// pagination convention as the pastoral timeline (page_size + page_index,
+// stop on a partial page).
+export async function listLocationRecordTimeline(
+  startISO: string,
+  endISO?: string,
+  opts: { pageSize?: number; maxPages?: number; revalidate?: number } = {},
+): Promise<OrahLocationRecord[]> {
+  const pageSize = opts.pageSize ?? 50;
+  const maxPages = opts.maxPages ?? 40;
+  const out: OrahLocationRecord[] = [];
+  for (let page = 0; page < maxPages; page += 1) {
+    const res = await orahCall<OrahEnvelope<OrahLocationRecord[]>>(
+      "/open-api/location-record/timeline",
+      {
+        query: {
+          date_range: endISO
+            ? { start_date: startISO, end_date: endISO }
+            : { start_date: startISO },
+          page_size: pageSize,
+          page_index: page,
+        },
+      },
+      { revalidate: opts.revalidate },
+    );
+    const records = res.data ?? [];
+    out.push(...records);
+    if (records.length < pageSize) break;
+  }
+  return out;
 }
 
 // Paginate through pastoral/timeline for a date range, stopping when a
