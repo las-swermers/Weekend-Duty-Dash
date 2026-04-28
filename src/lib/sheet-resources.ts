@@ -133,12 +133,20 @@ export async function fetchSheetResources(): Promise<Resource[]> {
   const iconI = idx("icon");
   const orderI = idx("order");
 
-  if (nameI === -1 || urlI === -1 || categoryI === -1) {
+  if (nameI === -1 || urlI === -1) {
     throw new SheetResourcesError(
       500,
-      `Sheet is missing required columns. Need at least: name, url, category. Saw: ${headers.join(", ")}`,
+      `Sheet is missing required columns. Need at least: name, url. Saw: ${headers.join(", ")}`,
     );
   }
+
+  const defaultCategory: ResourceCategory =
+    (process.env.LAUNCHPAD_DEFAULT_CATEGORY as ResourceCategory | undefined) &&
+    ALLOWED_CATEGORIES.has(
+      process.env.LAUNCHPAD_DEFAULT_CATEGORY as string,
+    )
+      ? (process.env.LAUNCHPAD_DEFAULT_CATEGORY as ResourceCategory)
+      : "Logistics";
 
   const out: Resource[] = [];
   const seen = new Set<string>();
@@ -146,10 +154,12 @@ export async function fetchSheetResources(): Promise<Resource[]> {
   rows.slice(1).forEach((row, rowIndex) => {
     const name = (row[nameI] ?? "").trim();
     const link = (row[urlI] ?? "").trim();
-    const categoryRaw = (row[categoryI] ?? "").trim();
+    const categoryRaw =
+      categoryI >= 0 ? (row[categoryI] ?? "").trim() : "";
+    const category = categoryRaw || defaultCategory;
     if (!name || !link) return;
     if (!link.startsWith("https://") && !link.startsWith("http://")) return;
-    if (!ALLOWED_CATEGORIES.has(categoryRaw)) return;
+    if (!ALLOWED_CATEGORIES.has(category)) return;
 
     let id = slugify(name);
     let suffix = 1;
