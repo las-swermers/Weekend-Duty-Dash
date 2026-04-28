@@ -75,12 +75,42 @@ function unique<T>(items: T[]): T[] {
 
 function stripTags(s: string): string {
   return s
-    .replace(/<[^>]+>/g, "")
+    .replace(/<[^>]+>/g, " ")
     .replace(/&lt;/g, "<")
     .replace(/&gt;/g, ">")
     .replace(/&quot;/g, '"')
     .replace(/&#39;/g, "'")
-    .replace(/&amp;/g, "&");
+    .replace(/&amp;/g, "&")
+    .replace(/[ \t]+/g, " ")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+// Find a section by id and return its cleaned text content up to the
+// next h1-h4 anchor. Used for surfacing the Authentication / API key
+// usage / request convention sections, where the auth-header format
+// lives but isn't always inside a <pre> block.
+function extractSectionText(
+  html: string,
+  sectionId: string,
+  maxChars = 4000,
+): string | undefined {
+  const headerRegex = new RegExp(
+    `<h[1-4][^>]*\\sid=["']${sectionId}["'][^>]*>`,
+    "i",
+  );
+  const m = html.match(headerRegex);
+  if (!m || m.index === undefined) return undefined;
+  const after = html.slice(m.index);
+  const nextRel = after
+    .slice(m[0].length)
+    .search(/<h[1-4][^>]*\sid=["']/i);
+  const chunkRaw =
+    nextRel === -1
+      ? after.slice(0, maxChars * 4)
+      : after.slice(0, m[0].length + nextRel);
+  const text = stripTags(chunkRaw);
+  return text.length > maxChars ? `${text.slice(0, maxChars)}…` : text;
 }
 
 // Pull anything that looks like an API surface reference out of the
@@ -253,9 +283,86 @@ export async function GET(req: NextRequest) {
     );
   }
 
+  // Auth-probe mode. Tries each common auth header / format combination
+  // against a known-good endpoint (POST /open-api/house/list with empty
+  // body) and reports which combinations succeed.
+  if (params.get("probeAuth") === "1") {
+    const base = overrideBase ?? ENV_BASE;
+    const path = "/open-api/house/list";
+    const body = "{}";
+    const variants: Array<{ header: string; format: string }> = [
+      { header: "X-API-Key", format: "raw" },
+      { header: "Authorization", format: "bearer" },
+      { header: "Authorization", format: "raw" },
+      { header: "Authorization", format: "apikey" },
+      { header: "Authorization", format: "token" },
+      { header: "Api-Key", format: "raw" },
+      { header: "X-Auth-Token", format: "raw" },
+      { header: "X-Api-Token", format: "raw" },
+      { header: "Token", format: "raw" },
+    ];
+    const formatValue = (format: string, key: string) =>
+      format === "bearer"
+        ? `Bearer ${key}`
+        : format === "apikey"
+          ? `ApiKey ${key}`
+          : format === "token"
+            ? `Token ${key}`
+            : key;
+
+    const results = await Promise.all(
+      variants.map(async (v) => {
+        const url = `${base}${path}`;
+        try {
+          const res = await fetch(url, {
+            method: "POST",
+            headers: {
+              [v.header]: formatValue(v.format, KEY),
+              "Content-Type": "application/json",
+              Accept: "application/json",
+            },
+            body,
+            cache: "no-store",
+          });
+          const text = await res.text();
+          let json: unknown;
+          try {
+            json = JSON.parse(text);
+          } catch {
+            /* non-json */
+          }
+          return {
+            header: v.header,
+            format: v.format,
+            status: res.status,
+            ok: res.ok,
+            body: json ?? text.slice(0, 200),
+          };
+        } catch (err) {
+          return {
+            header: v.header,
+            format: v.format,
+            status: 0,
+            ok: false,
+            error: err instanceof Error ? err.message : "fetch failed",
+          };
+        }
+      }),
+    );
+
+    const winner = results.find((r) => r.ok) ?? null;
+    return NextResponse.json({
+      mode: "probeAuth",
+      base,
+      path,
+      winner,
+      results,
+    });
+  }
+
   // Docs-scrape mode. Pulls the public docs page and extracts hints
   // about the real API surface (full URLs, METHOD /path lines, header
-  // examples, section IDs). Useful when nothing else has worked.
+  // examples, section IDs, code blocks, and key section text).
   if (docsMode) {
     const docsBase = overrideBase ?? ENV_BASE;
     const candidates = [
@@ -270,6 +377,7 @@ export async function GET(req: NextRequest) {
       status: number;
       length: number;
       hints?: ReturnType<typeof extractApiHints>;
+      sections?: Record<string, string | undefined>;
       error?: string;
     }> = [];
 
@@ -284,11 +392,30 @@ export async function GET(req: NextRequest) {
           cache: "no-store",
         });
         const text = await res.text();
+
+        let sections: Record<string, string | undefined> | undefined;
+        if (res.ok) {
+          const sectionIds = [
+            "authentication",
+            "creating-an-api-key",
+            "api-key-usage",
+            "request-conventions",
+            "response-conventions",
+            "error-conventions",
+            "rate-limits",
+          ];
+          sections = {};
+          for (const id of sectionIds) {
+            sections[id] = extractSectionText(text, id, 3000);
+          }
+        }
+
         fetched.push({
           url,
           status: res.status,
           length: text.length,
           hints: res.ok ? extractApiHints(text) : undefined,
+          sections,
         });
         if (res.ok && text.length > 1000) break;
       } catch (err) {
