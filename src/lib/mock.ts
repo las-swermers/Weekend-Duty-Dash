@@ -6,6 +6,7 @@ import type { Resource } from "@/types/resource";
 
 export interface HCStudent {
   id: number;
+  name?: string;
   initials: string;
   dorm: string;
   reason: string;

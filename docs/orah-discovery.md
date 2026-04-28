@@ -1,13 +1,8 @@
-# Orah API discovery — TEMPLATE (Phase 0)
+# Orah API discovery — LAS findings
 
-> **Status:** ⛔ NOT YET COMPLETED.
-> This document is a template. Phase 2 (Orah integration) is **blocked**
-> until this file is filled in. See `WEEKEND_DASHBOARD_SPEC.md` §3.
-
-This is a manual discovery task for Shayne, performed against the live
-Orah Admin Console. Claude Code should not guess at any of the values
-below — every blank must be replaced with a confirmed answer or screenshot
-reference.
+> **Status:** ✅ Auth + base URL confirmed 2026-04-28. Health Center
+> integration live; pastoral / leave integrations pending category
+> + endpoint discovery (see "Open questions" at the bottom).
 
 ---
 
@@ -15,134 +10,185 @@ reference.
 
 | Item | Value |
 |---|---|
-| Base URL | `https://open-api-ireland.orah.com` *(confirm this is correct for LAS)* |
-| Auth header name | _e.g. `X-API-Key` — confirm exact casing and name_ |
-| API key generated | _date / name (`weekend-dashboard-prod`) / stored in:_ |
-| Console docs URL | _link inside Orah Admin Console_ |
+| Base URL | `https://open-api-ireland.orah.com` ✅ confirmed |
+| Auth header | `Authorization: Bearer <ORAH_API_KEY>` ✅ confirmed |
+| Method | All endpoints are `POST` (RPC style) ✅ |
+| Path style | `/open-api/<resource>/<action>` ✅ |
+| Content-Type | `application/json` |
+| Empty body | `{}` is accepted by `*/list` endpoints |
+| Error shape | `{"error": {"message": "..."}}` |
+| Spelling | British/NZ ("authorisation") in error messages |
 
 ---
 
-## 1. Locations endpoint
+## 1. Endpoint surface (from public docs HTML)
 
-- Path: `_____`
-- Query parameters: `_____`
-- Response shape (sample, sanitized):
+```
+POST /open-api/house/list                         ← LAS dorms
+POST /open-api/house/{create,update,delete}
+POST /open-api/student/list                       ← roster
+POST /open-api/student/get-single
+POST /open-api/student/{create,update,delete,update-location}
+POST /open-api/contact/{get-single,list-by-student,create,update,delete}
+POST /open-api/location/tree                      ← all locations
+POST /open-api/location-record/get-current        ← who is where right now
+POST /open-api/location-record/timeline           ← historical movements
+POST /open-api/pastoral/timeline                  ← pastoral notes (incl. no-PA?)
+POST /open-api/roll/timeline                      ← attendance rolls
+POST /open-api/roll/get-single
+POST /open-api/leave-type/list
+POST /open-api/leave/get-single
+POST /open-api/leave/{create,update,delete}
+```
+
+> ⚠️ Note: there is **no `leave/list` endpoint**. To surface "open
+> travel requests for the weekend" we'll need to either use
+> `location-record/timeline` filtered to off-grounds locations,
+> or pull leaves per student. See open questions §6.
+
+---
+
+## 2. Confirmed model shapes
+
+### House (`POST /open-api/house/list`, body `{}`)
+
+LAS returned:
+
+| id | name |
+|---|---|
+| 373 | Beau-Site |
+| 374 | Savoy |
+| 535 | Esplanade |
+| 536 | DayStudent |
+| 538 | BEC-B |
+| 539 | BEC-G |
+| 741 | Beau-Reveil |
 
 ```json
 {
-  "data": []
+  "model": "house",
+  "id": 374,
+  "name": "Savoy",
+  "sis_id": null,
+  "created_at": "...",
+  "updated_at": "..."
 }
 ```
 
-- LAS Health Center location:
-  - Name in Orah: `_____`
-  - `id`: `_____`  ← becomes env var `HEALTH_CENTER_LOCATION_ID`
-
----
-
-## 2. Location Records endpoint
-
-- Path: `_____`
-- Filter by `location_id`: ☐ yes ☐ no
-- Filter by date range: ☐ yes ☐ no — parameter names: `_____`
-- Pagination: ☐ none ☐ cursor ☐ offset/limit — details: `_____`
-- Sample response (one record):
+### Student (`POST /open-api/student/list`, body `{}`)
 
 ```json
 {
+  "model": "student",
+  "id": 1234,
+  "first_name": "Joseph",
+  "last_name": "Bloggs",
+  "alt_name": "Joe",
+  "year_level": "10",
+  "house": { "id": 55, "sis_id": "0227" }
 }
 ```
 
-- Edge case test — student in HC overnight (Fri 22:00 → Sat 09:00):
-  appears in a Friday-only query? ☐ yes ☐ no
-- Notes: `_____`
+> `student.house` is a *ref* (id only) — to display dorm name we
+> join against the `house/list` map.
 
----
-
-## 3. Pastoral Records endpoint (no PA)
-
-- Path: `_____`
-- How "no physical activity" is encoded at LAS:
-  - ☐ pastoral record category named `_____`
-  - ☐ pastoral record tag `_____`
-  - ☐ student-profile custom field `_____`
-  - ☐ other: `_____`
-- Becomes env var `NO_PA_RECORD_TYPE_ID` (or similar).
-- Sample response:
+### Location (`POST /open-api/location/tree`, body `{"query":{"nested":false}}`)
 
 ```json
 {
+  "model": "location",
+  "id": 1,
+  "name": "On Ground",
+  "state": "on_grounds",   // or "off_grounds" or "home"
+  "type": "zone",
+  "child_locations": [{ "id": 4, "name": "English Block" }, ...]
 }
 ```
 
----
-
-## 4. Leave / travel requests endpoint
-
-- Path: `_____`
-- Status values present in responses: `pending` / `approved` / `denied` / others?
-- Date filter parameter names: `_____`
-- Sample response:
+### Location record (`POST /open-api/location-record/get-current`, body `{}`)
 
 ```json
 {
+  "model": "location_record",
+  "id": 448461,
+  "type": "in",            // or "out"
+  "record_time": "2024-03-22T09:47:25.648Z",
+  "location": { "id": 2454, "name": "Library" },
+  "student": { "id": 228501, "sis_id": null }
 }
 ```
 
----
+`student` here is a *ref*; we cross-reference to `student/list` for names.
 
-## 5. Scheduled trips
+### Pastoral record (`POST /open-api/pastoral/timeline`)
 
-Pick one:
-
-- ☐ A. Orah has an Activities/Events module — path `_____`
-- ☐ B. Trips are leave requests with a category — filter `_____`
-
-Sample response:
+Request body needs `query.date_range.start_date` (and optionally `end_date`),
+plus `page_size` / `page_index`.
 
 ```json
 {
+  "model": "pastoral",
+  "id": 1,
+  "date": "...",
+  "description": "...",
+  "action": "...",
+  "note": "...",
+  "watchlist": true,
+  "watchlist_expiry": "...",
+  "sensitive": false,
+  "pastoral_category": { "id": 11, "name": "Discipline" },
+  "student": { "id": 10973, "sis_id": null },
+  "created_by": { "id": 1206, "name": "Jane Smith" }
+}
+```
+
+### Leave (`POST /open-api/leave/get-single`)
+
+```json
+{
+  "model": "leave",
+  "id": 12345,
+  "status": "Active",         // or "Scheduled"
+  "start_time": "...",
+  "end_time": "...",
+  "leave_type": { "id": 1, "name": "Weekend Leave", "short_code": "WL" },
+  "location": { "id": 2422, "name": "Home" },
+  "student": { "id": 228695 }
 }
 ```
 
 ---
 
-## 6. Students / Houses
+## 3. App env vars (Vercel)
 
-- Path: `_____`
-- Response includes `house` / `dorm` field? ☐ yes ☐ no
-- If no, separate Houses endpoint:
-  - Path: `_____`
-  - Join key: `_____`
-
----
-
-## 7. Open questions for the school
-
-- [ ] Which "location" in Orah is the Health Center? (Exact name + id)
-- [ ] How is "no physical activity" recorded?
-- [ ] What does LAS call "clipboard" in Orah, and is it tracked there?
-- [ ] Are weekend activity trips tracked in Orah or only in the Google Sheet?
-- [ ] Who is the Orah admin who can grant API access?
+| Var | Value | Purpose |
+|---|---|---|
+| `ORAH_API_KEY` | (set) | Bearer token. |
+| `ORAH_BASE_URL` | `https://open-api-ireland.orah.com` | Default; change only if Orah moves regions. |
+| `HEALTH_CENTER_LOCATION_ID` | (TBD — find via `/api/orah/locations`) | Numeric id. Highest priority. |
+| `HEALTH_CENTER_LOCATION_NAME` | `Health Center` | Used for name match if id not set. |
+| `NO_PA_CATEGORY_NAME` | TBD after seeing real pastoral categories | Pastoral category name. |
+| `USE_MOCK_DATA` | (unset) | Fall back to mock for not-yet-wired routes. |
 
 ---
 
-## 8. Deviations from the spec
+## 4. Open questions / TODO
 
-> Anything in `WEEKEND_DASHBOARD_SPEC.md` that doesn't match reality. Be
-> explicit — silent papering-over breaks Phase 2.
-
-- _none yet_
-
----
-
-## 9. Sign-off
-
-When this document is complete, update the env vars below, commit this
-file, and Phase 2 implementation can begin.
-
-```
-ORAH_API_KEY=
-HEALTH_CENTER_LOCATION_ID=
-NO_PA_RECORD_TYPE_ID=
-```
+- [ ] Find LAS's Health Center location id. Visit `/api/orah/locations`
+      after the next deploy to read off the id, then set
+      `HEALTH_CENTER_LOCATION_ID`.
+- [ ] How does LAS encode "no physical activity"? Hit `pastoral/timeline`
+      for a recent date range and see what `pastoral_category.name`
+      values come back. Likely candidates: "Health", "Medical",
+      "No Physical Activity". The route will use whatever name we
+      put in `NO_PA_CATEGORY_NAME`.
+- [ ] How to list weekend travel requests? No `leave/list` endpoint
+      exists. Three options:
+      - (a) Use `location-record/timeline` for the weekend window,
+            filter to off-grounds locations.
+      - (b) Walk the student list and call `leave/get-single` per
+            active leave id we discover elsewhere.
+      - (c) Use `roll/timeline` — rolls have a `roll_type_name` like
+            "Day Trip" which might cover scheduled trips.
+- [ ] `clipboard` (LAS hourly check-in) — is it tracked in Orah at
+      all, or paper-only? Probably paper for now; out of scope.

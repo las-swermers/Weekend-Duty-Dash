@@ -58,18 +58,24 @@ export function HCSection({ data }: { data: HCStudent[] }) {
       meta={`${data.length} STUDENTS`}
     >
       {data.length === 0 ? (
-        <EmptyState message="No students in HC this Friday." />
+        <EmptyState message="No students in HC right now." />
       ) : (
         <div role="list">
           {data.map((s) => (
             <div className="row" key={s.id} role="listitem">
               <div className="row__initials">{s.initials}</div>
               <div className="row__main">
-                <div className="row__line">{s.reason}</div>
+                <div className="row__line">{s.name ?? s.reason}</div>
                 <div className="row__sub">
                   <span>{s.dorm}</span>
                   <span className="sep" />
                   <span>since {s.since}</span>
+                  {s.name && s.reason && s.reason !== "Currently signed in" && (
+                    <>
+                      <span className="sep" />
+                      <span>{s.reason}</span>
+                    </>
+                  )}
                 </div>
               </div>
               <div className="row__meta">

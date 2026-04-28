@@ -1,59 +1,96 @@
-// Orah Open API response types.
-//
-// These shapes are based on the public help-center summary. They are
-// expected to be confirmed and tightened during Phase 0 — see
-// docs/orah-discovery.md.
+// Orah Open API response types. Confirmed against the LAS tenant on
+// 2026-04-28 by hitting house/list, location/tree and others through
+// /api/orah/diagnose. See docs/orah-discovery.md.
+
+export interface OrahEnvelope<T> {
+  data: T;
+}
 
 export interface OrahHouse {
+  model: "house";
   id: number;
   name: string;
-}
-
-export interface OrahStudent {
-  id: number;
   sis_id: string | null;
-  first_name?: string;
-  last_name?: string;
-  house?: OrahHouse;
-}
-
-export interface LocationRecord {
-  model: "location_record";
-  id: number;
-  type: "in" | "out";
-  record_time: string; // ISO 8601
-  location: { id: number; name: string };
-  student: OrahStudent;
   created_at: string;
   updated_at: string;
 }
 
-// PastoralRecord, LeaveRequest, ScheduledTrip — define after Phase 0
-// confirms the field shapes.
-export interface PastoralRecord {
+export interface OrahHouseRef {
   id: number;
-  student: OrahStudent;
-  category?: string;
+  sis_id?: string | null;
+  name?: string;
+}
+
+export interface OrahStudent {
+  model: "student";
+  id: number;
+  first_name?: string;
+  last_name?: string;
+  alt_name?: string;
+  email?: string;
+  year_level?: string;
+  room_number?: string;
+  bed_number?: string;
+  deactivated?: boolean;
+  sis_id?: string | null;
+  house?: OrahHouseRef;
+}
+
+export interface OrahLocationRef {
+  id: number;
+  name: string;
+}
+
+export interface OrahLocation {
+  model: "location";
+  id: number;
+  name: string;
+  description?: string;
+  type?: string;
+  state?: "on_grounds" | "off_grounds" | "home" | string;
+  child_locations?: Array<{ id: number; name: string }>;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface OrahLocationRecord {
+  model: "location_record";
+  id: number;
+  type: "in" | "out";
+  record_time: string;
+  location: OrahLocationRef;
+  student: { id: number; sis_id?: string | null };
+  created_at: string;
+  updated_at: string;
+}
+
+export interface OrahPastoralRecord {
+  model: "pastoral";
+  id: number;
+  date: string;
+  description?: string;
+  action?: string;
   note?: string;
-  starts_at?: string;
-  ends_at?: string;
+  watchlist?: boolean;
+  watchlist_expiry?: string | null;
+  sensitive?: boolean;
+  pastoral_category?: { id: number; name: string };
+  student: { id: number; sis_id?: string | null };
+  created_by?: { id: number; name: string };
+  created_at: string;
+  updated_at: string;
 }
 
-export interface LeaveRequest {
+export interface OrahLeave {
+  model: "leave";
   id: number;
-  student: OrahStudent;
-  destination?: string;
-  status: "pending" | "approved" | "denied" | string;
-  depart_at?: string;
-  return_at?: string;
-  chaperone?: string;
-}
-
-export interface ScheduledTrip {
-  id: string | number;
-  title: string;
-  lead?: string;
-  count: number;
-  depart_at?: string;
-  return_at?: string;
+  status: string;
+  start_time: string;
+  end_time: string;
+  note?: string;
+  location?: OrahLocationRef;
+  leave_type?: { id: number; name: string; short_code?: string };
+  student: { id: number; sis_id?: string | null };
+  created_at: string;
+  updated_at: string;
 }
