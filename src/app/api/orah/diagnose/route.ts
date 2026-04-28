@@ -73,6 +73,47 @@ function unique<T>(items: T[]): T[] {
   return Array.from(new Set(items));
 }
 
+// Pull anything that looks like an API surface reference out of the
+// public Orah docs HTML: full URLs on a *.orah.com host, METHOD /path
+// lines, header examples, and section anchors. Cheap regex; we don't
+// need to parse the DOM, just find hints to feed back into the probe.
+function extractApiHints(html: string): {
+  fullUrls: string[];
+  pathLines: string[];
+  headerHints: string[];
+  sectionIds: string[];
+} {
+  const fullUrls = unique(
+    Array.from(
+      html.matchAll(/https:\/\/[a-z0-9.\-]+\.orah\.com\/[^\s"'<>)]+/gi),
+    ).map((m) => m[0]),
+  ).slice(0, 50);
+
+  const pathLines = unique(
+    Array.from(
+      html.matchAll(
+        /(?:^|[\s>"'(])((?:GET|POST|PUT|DELETE|PATCH)\s+\/[A-Za-z0-9_\-\/{}.?=&]+)/g,
+      ),
+    ).map((m) => m[1]),
+  ).slice(0, 100);
+
+  const headerHints = unique(
+    Array.from(
+      html.matchAll(
+        /(?:[xX]-?[aA][pP][iI]-?[kK]ey|[Aa]uthorization:\s*[Bb]earer|[Bb]earer\s+[A-Za-z0-9]+)/g,
+      ),
+    ).map((m) => m[0]),
+  ).slice(0, 20);
+
+  const sectionIds = unique(
+    Array.from(
+      html.matchAll(/<h[1-4][^>]*\sid=["']([^"']+)["']/gi),
+    ).map((m) => m[1]),
+  ).slice(0, 80);
+
+  return { fullUrls, pathLines, headerHints, sectionIds };
+}
+
 function safePath(input: string): string | null {
   if (!input.startsWith("/")) return null;
   if (input.includes("..")) return null;
@@ -166,6 +207,7 @@ export async function GET(req: NextRequest) {
   const customBaseRaw = params.get("base");
   const customPath = params.get("path");
   const customHeader = params.get("header") ?? "X-API-Key";
+  const docsMode = params.get("docs") === "1";
 
   const overrideBase = customBaseRaw ? safeBase(customBaseRaw) : null;
   if (customBaseRaw && !overrideBase) {
@@ -176,6 +218,61 @@ export async function GET(req: NextRequest) {
       },
       { status: 400 },
     );
+  }
+
+  // Docs-scrape mode. Pulls the public docs page and extracts hints
+  // about the real API surface (full URLs, METHOD /path lines, header
+  // examples, section IDs). Useful when nothing else has worked.
+  if (docsMode) {
+    const docsBase = overrideBase ?? ENV_BASE;
+    const candidates = [
+      `${docsBase}/open-api/`,
+      `${docsBase}/open-api`,
+      `${docsBase}/docs/`,
+      `${docsBase}/docs`,
+      `${docsBase}/`,
+    ];
+    const fetched: Array<{
+      url: string;
+      status: number;
+      length: number;
+      hints?: ReturnType<typeof extractApiHints>;
+      error?: string;
+    }> = [];
+
+    for (const url of candidates) {
+      try {
+        const res = await fetch(url, {
+          headers: {
+            Accept: "text/html,application/xhtml+xml",
+            "User-Agent":
+              "Mozilla/5.0 (compatible; LAS-WeekendDashboard/1.0)",
+          },
+          cache: "no-store",
+        });
+        const text = await res.text();
+        fetched.push({
+          url,
+          status: res.status,
+          length: text.length,
+          hints: res.ok ? extractApiHints(text) : undefined,
+        });
+        if (res.ok && text.length > 1000) break;
+      } catch (err) {
+        fetched.push({
+          url,
+          status: 0,
+          length: 0,
+          error: err instanceof Error ? err.message : "fetch failed",
+        });
+      }
+    }
+
+    return NextResponse.json({
+      mode: "docs",
+      sentBy: session.user?.email ?? "unknown",
+      fetched,
+    });
   }
 
   // Single-shot mode.
