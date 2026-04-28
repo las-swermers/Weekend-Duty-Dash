@@ -49,6 +49,16 @@ forward to Logtail or similar.
 - `AUTH_SECRET` (forces all sessions to re-auth)
 - `RESEND_API_KEY`
 
+## Orah diagnostic
+
+While Phase 0 is being filled in, sign-in then visit
+`/api/orah/diagnose` on the deployed site. It calls a battery of
+likely Orah endpoints with the configured `ORAH_API_KEY` and returns
+the raw responses, which we paste back into `docs/orah-discovery.md`.
+
+Single-path probing: `/api/orah/diagnose?path=/open-api/locations`.
+Custom header: `&header=Authorization` (sent as `Bearer <key>`).
+
 ## Phase status
 
 - [x] Phase 1 — project setup & deploy skeleton
