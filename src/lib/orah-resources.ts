@@ -139,6 +139,26 @@ export function buildStudentMap(
   return new Map(students.map((s) => [s.id, s]));
 }
 
+// Resolve a parent zone (e.g. "Signed Out" id 1721, "Student Life Trips"
+// id 2141) into the set of its child location ids plus the zone id
+// itself. Records can be stamped against either the zone or a specific
+// child, so both should be considered when filtering.
+export async function getZoneAndChildren(
+  zoneId: number,
+): Promise<{ ids: Set<number>; idToName: Map<number, string> }> {
+  const all = await listLocationsFlat();
+  const idToName = new Map<number, string>();
+  for (const loc of all) {
+    if (loc.id !== zoneId) continue;
+    idToName.set(loc.id, loc.name);
+    for (const child of loc.child_locations ?? []) {
+      idToName.set(child.id, child.name);
+    }
+    break;
+  }
+  return { ids: new Set(idToName.keys()), idToName };
+}
+
 // Paginate through location-record/timeline for a date range. Same
 // pagination convention as the pastoral timeline (page_size + page_index,
 // stop on a partial page).
