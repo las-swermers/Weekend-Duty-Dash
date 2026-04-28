@@ -62,9 +62,24 @@ Custom header: `&header=Authorization` (sent as `Bearer <key>`).
 ## Phase status
 
 - [x] Phase 1 — project setup & deploy skeleton
-- [ ] Phase 0 — Orah discovery (manual; see `docs/orah-discovery.md`)
-- [ ] Phase 2 — Orah integration
+- [x] Phase 0 — Orah discovery (auth + base + endpoint surface confirmed; see `docs/orah-discovery.md`)
+- [~] Phase 2 — Orah integration (HC live; no-PA / travel / trips still on mock)
 - [ ] Phase 3 — resource launchpad (KV-backed; route + UI exist, KV needs to be provisioned on Vercel)
 - [ ] Phase 4 — email snapshot (route + template exist; UI dialog pending)
 - [ ] Phase 5 — polish
 - [ ] Phase 6 — scheduled email (optional)
+
+## Finding the Health Center location id
+
+After deploy, sign in and visit `/api/orah/locations`. The response
+lists every Orah location with `id`, `name`, `state`. Find the one
+that's the school's HC, copy its `id`, and set the env var on Vercel:
+
+```
+HEALTH_CENTER_LOCATION_ID=<id>
+```
+
+If the env var isn't set, the app tries to match by name using
+`HEALTH_CENTER_LOCATION_NAME` (default "Health Center"). If multiple
+locations match or none match, the HC route returns an error
+explaining what to do.

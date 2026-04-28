@@ -1,55 +1,69 @@
-// Central Orah API client. All Orah requests should funnel through this
-// module so we have a single place for the auth header, retries, and
-// error handling. The exact endpoint shapes and the auth header name
-// are confirmed in Phase 0 — see docs/orah-discovery.md.
+// Central Orah API client. The Orah Open API is POST-only RPC under
+// /open-api/<resource>/<action>; auth is Authorization: Bearer <key>.
+// Confirmed against the LAS tenant 2026-04-28 — see
+// docs/orah-discovery.md.
 
 const BASE = process.env.ORAH_BASE_URL ?? "https://open-api-ireland.orah.com";
 const KEY = process.env.ORAH_API_KEY;
 
-type FetchOptions = {
-  cache?: RequestCache;
-  next?: { revalidate?: number; tags?: string[] };
+type CallOptions = {
+  // Route segment-level cache. Pass undefined to skip caching.
+  revalidate?: number;
 };
 
 export class OrahError extends Error {
   constructor(
     public status: number,
     message: string,
+    public bodyPreview?: string,
   ) {
     super(message);
     this.name = "OrahError";
   }
 }
 
-export async function orahFetch<T>(
+export async function orahCall<T = unknown>(
   path: string,
-  opts: FetchOptions = {},
+  body: unknown = {},
+  opts: CallOptions = {},
 ): Promise<T> {
   if (!KEY) {
     throw new OrahError(500, "ORAH_API_KEY is not configured");
   }
+  if (!path.startsWith("/open-api/")) {
+    throw new OrahError(500, `path must start with /open-api/, got ${path}`);
+  }
 
-  const url = `${BASE}${path}`;
-  const res = await fetch(url, {
+  const res = await fetch(`${BASE}${path}`, {
+    method: "POST",
     headers: {
-      // Header name to be confirmed in Phase 0. Orah docs show X-API-Key.
-      "X-API-Key": KEY,
+      Authorization: `Bearer ${KEY}`,
       "Content-Type": "application/json",
       Accept: "application/json",
     },
-    cache: opts.cache,
-    next: opts.next,
+    body: JSON.stringify(body),
+    cache: opts.revalidate === undefined ? "no-store" : undefined,
+    next: opts.revalidate === undefined ? undefined : { revalidate: opts.revalidate },
   });
 
+  const text = await res.text();
   if (!res.ok) {
-    const body = await res.text().catch(() => "");
     throw new OrahError(
       res.status,
-      `Orah ${res.status}: ${body.slice(0, 200)}`,
+      `Orah ${path} → ${res.status}`,
+      text.slice(0, 300),
     );
   }
-
-  return res.json() as Promise<T>;
+  if (!text) return {} as T;
+  try {
+    return JSON.parse(text) as T;
+  } catch {
+    throw new OrahError(
+      502,
+      `Orah ${path} returned non-JSON`,
+      text.slice(0, 300),
+    );
+  }
 }
 
 export function isMockMode(): boolean {
