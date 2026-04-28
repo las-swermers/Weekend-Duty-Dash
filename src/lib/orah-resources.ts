@@ -8,6 +8,7 @@ import type {
   OrahEnvelope,
   OrahHouse,
   OrahLocation,
+  OrahPastoralRecord,
   OrahStudent,
 } from "@/types/orah";
 
@@ -120,6 +121,38 @@ export function buildStudentMap(
   students: OrahStudent[],
 ): Map<number, OrahStudent> {
   return new Map(students.map((s) => [s.id, s]));
+}
+
+// Paginate through pastoral/timeline for a date range, stopping when a
+// page returns fewer records than requested (or after maxPages as a
+// safety bound).
+export async function listPastoralTimeline(
+  startISO: string,
+  endISO?: string,
+  opts: { pageSize?: number; maxPages?: number; revalidate?: number } = {},
+): Promise<OrahPastoralRecord[]> {
+  const pageSize = opts.pageSize ?? 50;
+  const maxPages = opts.maxPages ?? 20;
+  const out: OrahPastoralRecord[] = [];
+  for (let page = 0; page < maxPages; page += 1) {
+    const res = await orahCall<OrahEnvelope<OrahPastoralRecord[]>>(
+      "/open-api/pastoral/timeline",
+      {
+        query: {
+          date_range: endISO
+            ? { start_date: startISO, end_date: endISO }
+            : { start_date: startISO },
+          page_size: pageSize,
+          page_index: page,
+        },
+      },
+      { revalidate: opts.revalidate },
+    );
+    const records = res.data ?? [];
+    out.push(...records);
+    if (records.length < pageSize) break;
+  }
+  return out;
 }
 
 export function studentDisplayName(s: OrahStudent | undefined): {

@@ -113,6 +113,12 @@ export function NoPaSection({ data }: { data: NoPaStudent[] }) {
               <div className="row__main">
                 <div className="row__line">{s.restriction}</div>
                 <div className="row__sub">
+                  {s.name && (
+                    <>
+                      <span>{s.name}</span>
+                      <span className="sep" />
+                    </>
+                  )}
                   <span>{s.dorm}</span>
                   <span className="sep" />
                   <span>until {s.until}</span>

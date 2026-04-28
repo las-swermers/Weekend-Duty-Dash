@@ -16,6 +16,7 @@ export interface HCStudent {
 
 export interface NoPaStudent {
   id: number;
+  name?: string;
   initials: string;
   dorm: string;
   restriction: string;
