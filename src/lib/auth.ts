@@ -14,9 +14,17 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
       const email = profile?.email ?? "";
       return email.endsWith(`@${allowedDomain}`);
     },
+    async jwt({ token, profile }) {
+      if (profile?.email) token.email = profile.email;
+      if (profile?.name) token.name = profile.name;
+      return token;
+    },
     async session({ session, token }) {
       if (session.user && typeof token.email === "string") {
         session.user.email = token.email;
+      }
+      if (session.user && typeof token.name === "string") {
+        session.user.name = token.name;
       }
       return session;
     },
