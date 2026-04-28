@@ -1,6 +1,8 @@
-// Live: students currently signed into the Health Center, enriched
-// with name + dorm. Calls /open-api/location-record/get-current and
-// filters client-side to the configured HC location id.
+// Live: students currently signed into any Health Center / Nursery /
+// Infirmary location, enriched with name + dorm + which HC they're in.
+// Calls /open-api/location-record/get-current and filters client-side
+// to the resolved set of HC location ids (LAS has a per-dorm HC layout
+// so the resolver returns an array, not a single id).
 
 import { NextResponse } from "next/server";
 
@@ -11,7 +13,7 @@ import {
   buildStudentMap,
   listHouses,
   listStudents,
-  resolveHealthCenterId,
+  resolveHealthCenterLocationIds,
   studentDisplayName,
 } from "@/lib/orah-resources";
 import { HC_STUDENTS } from "@/lib/mock";
@@ -28,6 +30,8 @@ interface DashboardHCStudent {
   reason: string;
   since: string;
   status: "in" | "overnight";
+  location: string;
+  locationId: number;
 }
 
 function describeRecord(rec: OrahLocationRecord): {
@@ -63,6 +67,8 @@ export async function GET() {
         reason: s.reason,
         since: s.since,
         status: s.status,
+        location: "Health Center",
+        locationId: 0,
       })),
       pulledAt: new Date().toISOString(),
       source: "mock",
@@ -70,7 +76,8 @@ export async function GET() {
   }
 
   try {
-    const hc = await resolveHealthCenterId();
+    const hc = await resolveHealthCenterLocationIds();
+    const hcSet = new Set(hc.ids);
 
     const [recordsResp, students, houses] = await Promise.all([
       orahCall<OrahEnvelope<OrahLocationRecord[]>>(
@@ -84,7 +91,7 @@ export async function GET() {
     const houseMap = buildHouseMap(houses);
 
     const records = (recordsResp.data ?? []).filter(
-      (r) => r.type === "in" && r.location?.id === hc.id,
+      (r) => r.type === "in" && r.location && hcSet.has(r.location.id),
     );
 
     const out: DashboardHCStudent[] = records.map((r) => {
@@ -102,12 +109,27 @@ export async function GET() {
         reason: "Currently signed in",
         since,
         status,
+        location: r.location.name,
+        locationId: r.location.id,
       };
     });
 
+    out.sort((a, b) => a.name.localeCompare(b.name));
+
+    // Group by location for the meta block (useful for the snapshot
+    // email and any "X in Savoy HC, Y in BE Nursery" UI later).
+    const byLocation = new Map<string, number>();
+    for (const s of out) {
+      byLocation.set(s.location, (byLocation.get(s.location) ?? 0) + 1);
+    }
+
     return NextResponse.json({
       students: out,
-      hcLocation: { id: hc.id, name: hc.name ?? null, via: hc.via },
+      meta: {
+        hcLocationIds: hc.ids,
+        resolvedVia: hc.via,
+        byLocation: Object.fromEntries(byLocation),
+      },
       pulledAt: new Date().toISOString(),
       source: "orah",
     });

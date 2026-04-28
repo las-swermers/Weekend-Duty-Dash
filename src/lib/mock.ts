@@ -12,6 +12,8 @@ export interface HCStudent {
   reason: string;
   since: string;
   status: "in" | "overnight";
+  location?: string;
+  locationId?: number;
 }
 
 export interface NoPaStudent {

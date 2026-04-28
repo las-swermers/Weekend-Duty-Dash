@@ -68,14 +68,14 @@ export function HCSection({ data }: { data: HCStudent[] }) {
                 <div className="row__line">{s.name ?? s.reason}</div>
                 <div className="row__sub">
                   <span>{s.dorm}</span>
-                  <span className="sep" />
-                  <span>since {s.since}</span>
-                  {s.name && s.reason && s.reason !== "Currently signed in" && (
+                  {s.location && (
                     <>
                       <span className="sep" />
-                      <span>{s.reason}</span>
+                      <span>{s.location}</span>
                     </>
                   )}
+                  <span className="sep" />
+                  <span>since {s.since}</span>
                 </div>
               </div>
               <div className="row__meta">
