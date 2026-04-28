@@ -63,11 +63,13 @@ export function DashboardClient({ weekendLabel, aoc, initial }: Props) {
     fetcher,
     { refreshInterval: 60_000, fallbackData: { trips: initial.trips } },
   );
-  const resources = useSWR<{ resources: Resource[] }>(
-    "/api/resources",
-    fetcher,
-    { fallbackData: { resources: initial.resources } },
-  );
+  const resources = useSWR<{
+    resources: Resource[];
+    mode?: "kv" | "sheet" | "seed";
+    editUrl?: string | null;
+  }>("/api/resources", fetcher, {
+    fallbackData: { resources: initial.resources },
+  });
 
   const [dialogOpen, setDialogOpen] = useState(false);
   const [dialogCategory, setDialogCategory] = useState<ResourceCategory | null>(
@@ -180,7 +182,12 @@ export function DashboardClient({ weekendLabel, aoc, initial }: Props) {
         <TripsSection data={trips.data?.trips ?? []} />
       </div>
 
-      <Launchpad resources={resources.data?.resources ?? []} onAdd={handleAdd} />
+      <Launchpad
+        resources={resources.data?.resources ?? []}
+        onAdd={handleAdd}
+        mode={resources.data?.mode ?? "kv"}
+        editUrl={resources.data?.editUrl ?? null}
+      />
 
       <footer className="colophon">
         <div>LAS · 1854 Leysin · Internal tool</div>
