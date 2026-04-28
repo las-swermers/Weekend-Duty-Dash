@@ -8,9 +8,11 @@ import { CATEGORIES, type Resource, type ResourceCategory } from "@/types/resour
 interface Props {
   resources: Resource[];
   onAdd: (category: ResourceCategory) => void;
+  mode?: "kv" | "sheet" | "seed";
+  editUrl?: string | null;
 }
 
-export function Launchpad({ resources, onAdd }: Props) {
+export function Launchpad({ resources, onAdd, mode = "kv", editUrl }: Props) {
   const grouped = useMemo(() => {
     const g: Partial<Record<ResourceCategory, Resource[]>> = {};
     for (const r of resources) {
@@ -21,6 +23,8 @@ export function Launchpad({ resources, onAdd }: Props) {
     return g;
   }, [resources]);
 
+  const sheetMode = mode === "sheet";
+
   return (
     <section className="launchpad" id="launchpad">
       <div className="launchpad__head">
@@ -28,9 +32,30 @@ export function Launchpad({ resources, onAdd }: Props) {
           The <em>launchpad</em>
         </h2>
         <p className="launchpad__lede">
-          Living references and rosters. Bookmark anything that gets opened
-          more than twice on a duty weekend.
+          {sheetMode ? (
+            <>
+              Living references and rosters. Edits happen in the source Google
+              Sheet — changes appear here within a few minutes.
+            </>
+          ) : (
+            <>
+              Living references and rosters. Bookmark anything that gets opened
+              more than twice on a duty weekend.
+            </>
+          )}
         </p>
+        {sheetMode && editUrl && (
+          <a
+            href={editUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="btn btn--ghost btn--sm"
+            style={{ alignSelf: "end" }}
+          >
+            <Icon name="external" size={13} />
+            Edit in Sheets
+          </a>
+        )}
       </div>
 
       {CATEGORIES.map((cat) => {
@@ -62,14 +87,16 @@ export function Launchpad({ resources, onAdd }: Props) {
                   </div>
                 </a>
               ))}
-              <button
-                type="button"
-                className="tile tile--add"
-                onClick={() => onAdd(cat)}
-              >
-                <Icon name="plus" size={18} />
-                <div className="tile__name">Add</div>
-              </button>
+              {!sheetMode && (
+                <button
+                  type="button"
+                  className="tile tile--add"
+                  onClick={() => onAdd(cat)}
+                >
+                  <Icon name="plus" size={18} />
+                  <div className="tile__name">Add</div>
+                </button>
+              )}
             </div>
           </div>
         );
