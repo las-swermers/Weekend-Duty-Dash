@@ -5,7 +5,6 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { PastoralCharts } from "@/components/analytics/charts";
 import type {
-  EnrichedPastoral,
   PastoralFilters,
   PastoralMeta,
   PastoralResponse,
@@ -16,6 +15,8 @@ interface Props {
   defaultEnd: string;
   viewerEmail: string;
 }
+
+type Preset = "today" | "week" | "month" | "semester" | "custom";
 
 function toDateInput(iso: string): string {
   if (!iso) return "";
@@ -36,66 +37,34 @@ function fromDateInput(value: string, endOfDay = false): string {
   return d.toISOString();
 }
 
-function csvEscape(value: string): string {
-  if (/[",\n\r]/.test(value)) {
-    return `"${value.replace(/"/g, '""')}"`;
+function presetRange(preset: Preset): { start: string; end: string } {
+  const today = new Date();
+  const end = toDateInput(today.toISOString());
+  const start = new Date(today);
+  if (preset === "today") {
+    return { start: end, end };
   }
-  return value;
-}
-
-function exportCsv(records: EnrichedPastoral[]): void {
-  const header = [
-    "date",
-    "category",
-    "student",
-    "year",
-    "house",
-    "watchlist",
-    "sensitive",
-    "description",
-    "action",
-    "note",
-    "created_by",
-  ];
-  const rows = records.map((r) =>
-    [
-      r.date,
-      r.category ?? "",
-      r.studentName,
-      r.yearLevel ?? "",
-      r.house ?? "",
-      r.watchlist ? "yes" : "",
-      r.sensitive ? "yes" : "",
-      r.description,
-      r.action,
-      r.note,
-      r.createdBy ?? "",
-    ]
-      .map(csvEscape)
-      .join(","),
-  );
-  const csv = [header.join(","), ...rows].join("\n");
-  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = `pastoral-${new Date().toISOString().slice(0, 10)}.csv`;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  URL.revokeObjectURL(url);
+  if (preset === "week") {
+    start.setDate(today.getDate() - 6);
+  } else if (preset === "month") {
+    start.setDate(today.getDate() - 29);
+  } else if (preset === "semester") {
+    // Semester window — configurable later, default ~120 days back.
+    const days = Number(process.env.NEXT_PUBLIC_SEMESTER_DAYS) || 120;
+    start.setDate(today.getDate() - (days - 1));
+  }
+  return { start: toDateInput(start.toISOString()), end };
 }
 
 export function AnalyticsClient({ defaultStart, viewerEmail }: Props) {
   const today = new Date();
+  const initialEnd = toDateInput(today.toISOString());
+  const [preset, setPreset] = useState<Preset>("month");
   const [startDate, setStartDate] = useState(toDateInput(defaultStart));
-  const [endDate, setEndDate] = useState(toDateInput(today.toISOString()));
+  const [endDate, setEndDate] = useState(initialEnd);
   const [categories, setCategories] = useState<string[]>([]);
   const [houseIds, setHouseIds] = useState<number[]>([]);
   const [yearLevels, setYearLevels] = useState<string[]>([]);
-  const [watchlistOnly, setWatchlistOnly] = useState(false);
-  const [includeSensitive, setIncludeSensitive] = useState(false);
-  const [search, setSearch] = useState("");
 
   const [meta, setMeta] = useState<PastoralMeta | null>(null);
   const [metaError, setMetaError] = useState<string | null>(null);
@@ -108,7 +77,7 @@ export function AnalyticsClient({ defaultStart, viewerEmail }: Props) {
     fetch(
       `/api/orah/pastoral/meta?start=${encodeURIComponent(
         fromDateInput(toDateInput(defaultStart)),
-      )}&end=${encodeURIComponent(fromDateInput(toDateInput(new Date().toISOString()), true))}`,
+      )}&end=${encodeURIComponent(fromDateInput(initialEnd, true))}`,
       { signal: ac.signal },
     )
       .then(async (res) => {
@@ -123,7 +92,7 @@ export function AnalyticsClient({ defaultStart, viewerEmail }: Props) {
         if (err.name !== "AbortError") setMetaError(err.message);
       });
     return () => ac.abort();
-  }, [defaultStart]);
+  }, [defaultStart, initialEnd]);
 
   const runQuery = useCallback(async () => {
     setLoading(true);
@@ -134,9 +103,6 @@ export function AnalyticsClient({ defaultStart, viewerEmail }: Props) {
       categories: categories.length ? categories : undefined,
       houseIds: houseIds.length ? houseIds : undefined,
       yearLevels: yearLevels.length ? yearLevels : undefined,
-      watchlistOnly: watchlistOnly || undefined,
-      includeSensitive: includeSensitive || undefined,
-      search: search.trim() || undefined,
     };
     try {
       const res = await fetch("/api/orah/pastoral", {
@@ -155,49 +121,47 @@ export function AnalyticsClient({ defaultStart, viewerEmail }: Props) {
     } finally {
       setLoading(false);
     }
-  }, [
-    startDate,
-    endDate,
-    categories,
-    houseIds,
-    yearLevels,
-    watchlistOnly,
-    includeSensitive,
-    search,
-  ]);
+  }, [startDate, endDate, categories, houseIds, yearLevels]);
 
-  // First query when meta lands.
+  // Re-run when the date window or filters change.
   useEffect(() => {
-    if (meta && !data && !error) {
-      void runQuery();
-    }
+    if (!meta) return;
+    void runQuery();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [meta]);
+  }, [meta, startDate, endDate, categories, houseIds, yearLevels]);
 
-  const records = data?.records ?? [];
   const agg = data?.aggregations;
 
-  const dateFmt = useMemo(
-    () =>
-      new Intl.DateTimeFormat("en-GB", {
-        timeZone: "Europe/Zurich",
-        day: "2-digit",
-        month: "short",
-        year: "2-digit",
-        hour: "2-digit",
-        minute: "2-digit",
-        hour12: false,
-      }),
-    [],
-  );
+  const applyPreset = (p: Preset) => {
+    setPreset(p);
+    if (p === "custom") return;
+    const { start, end } = presetRange(p);
+    setStartDate(start);
+    setEndDate(end);
+  };
+
+  const onCustomDate =
+    (which: "start" | "end") =>
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      setPreset("custom");
+      if (which === "start") setStartDate(e.target.value);
+      else setEndDate(e.target.value);
+    };
 
   const toggleArrayValue = <T,>(
     list: T[],
     setter: (v: T[]) => void,
     value: T,
   ) => {
-    setter(list.includes(value) ? list.filter((v) => v !== value) : [...list, value]);
+    setter(
+      list.includes(value) ? list.filter((v) => v !== value) : [...list, value],
+    );
   };
+
+  const topCategory = useMemo(() => {
+    if (!agg?.byCategory.length) return null;
+    return agg.byCategory[0];
+  }, [agg]);
 
   return (
     <div className="app" data-density="balanced">
@@ -212,39 +176,67 @@ export function AnalyticsClient({ defaultStart, viewerEmail }: Props) {
           <div className="masthead__sub">
             <span>Viewer · {viewerEmail || "—"}</span>
             <span className="dot" />
-            <span>{records.length} records loaded</span>
+            <span>{startDate || "—"} → {endDate || "—"}</span>
+            {loading && (
+              <>
+                <span className="dot" />
+                <span>loading…</span>
+              </>
+            )}
           </div>
         </div>
         <div className="masthead__actions">
           <Link href="/" className="btn btn--ghost btn--sm">
             ← Dashboard
           </Link>
-          <button
-            type="button"
-            className="btn btn--primary btn--sm"
-            onClick={() => exportCsv(records)}
-            disabled={!records.length}
-          >
-            Export CSV
-          </button>
+          <Link href="/live" className="btn btn--ghost btn--sm">
+            Live
+          </Link>
         </div>
       </header>
 
-      <section className="section" id="filters">
+      <section className="section" id="range">
         <div className="section__head">
           <div className="section__num">№ 01</div>
           <h2 className="section__title">
-            Filter <em>set</em>
+            Time <em>window</em>
           </h2>
           <div className="section__sub">
-            Pastoral records are sensitive. Sensitive-flagged entries are
-            excluded by default.
+            Pick a preset or use custom dates. All metrics below recompute
+            automatically.
           </div>
         </div>
 
-        {metaError && (
-          <div className="section__empty">Meta load failed: {metaError}</div>
-        )}
+        <div
+          style={{
+            display: "flex",
+            flexWrap: "wrap",
+            gap: 8,
+            marginBottom: 16,
+          }}
+        >
+          {(
+            [
+              ["today", "Today"],
+              ["week", "Week"],
+              ["month", "Month"],
+              ["semester", "Semester"],
+              ["custom", "Custom"],
+            ] as Array<[Preset, string]>
+          ).map(([key, label]) => {
+            const on = preset === key;
+            return (
+              <button
+                key={key}
+                type="button"
+                onClick={() => applyPreset(key)}
+                className={on ? "btn btn--primary btn--sm" : "btn btn--ghost btn--sm"}
+              >
+                {label}
+              </button>
+            );
+          })}
+        </div>
 
         <div
           style={{
@@ -260,7 +252,7 @@ export function AnalyticsClient({ defaultStart, viewerEmail }: Props) {
               id="start"
               type="date"
               value={startDate}
-              onChange={(e) => setStartDate(e.target.value)}
+              onChange={onCustomDate("start")}
             />
           </div>
           <div className="field">
@@ -269,30 +261,21 @@ export function AnalyticsClient({ defaultStart, viewerEmail }: Props) {
               id="end"
               type="date"
               value={endDate}
-              onChange={(e) => setEndDate(e.target.value)}
-            />
-          </div>
-          <div className="field" style={{ gridColumn: "span 2" }}>
-            <label htmlFor="search">Search</label>
-            <input
-              id="search"
-              type="text"
-              value={search}
-              placeholder="text in description / action / note / name"
-              onChange={(e) => setSearch(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") void runQuery();
-              }}
+              onChange={onCustomDate("end")}
             />
           </div>
         </div>
+
+        {metaError && (
+          <div className="section__empty">Meta load failed: {metaError}</div>
+        )}
 
         <div
           style={{
             display: "grid",
             gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
             gap: 16,
-            marginBottom: 16,
+            marginBottom: 4,
           }}
         >
           <FilterChips
@@ -321,63 +304,6 @@ export function AnalyticsClient({ defaultStart, viewerEmail }: Props) {
           />
         </div>
 
-        <div
-          style={{
-            display: "flex",
-            gap: 16,
-            alignItems: "center",
-            flexWrap: "wrap",
-          }}
-        >
-          <label
-            style={{
-              display: "flex",
-              gap: 8,
-              alignItems: "center",
-              fontFamily: "var(--mono)",
-              fontSize: 12,
-              textTransform: "uppercase",
-              letterSpacing: "0.08em",
-              color: "var(--ink-2)",
-            }}
-          >
-            <input
-              type="checkbox"
-              checked={watchlistOnly}
-              onChange={(e) => setWatchlistOnly(e.target.checked)}
-            />
-            Watchlist only
-          </label>
-          <label
-            style={{
-              display: "flex",
-              gap: 8,
-              alignItems: "center",
-              fontFamily: "var(--mono)",
-              fontSize: 12,
-              textTransform: "uppercase",
-              letterSpacing: "0.08em",
-              color: "var(--ink-2)",
-            }}
-          >
-            <input
-              type="checkbox"
-              checked={includeSensitive}
-              onChange={(e) => setIncludeSensitive(e.target.checked)}
-            />
-            Include sensitive
-          </label>
-          <button
-            type="button"
-            className="btn btn--primary btn--sm"
-            onClick={() => void runQuery()}
-            disabled={loading}
-            style={{ marginLeft: "auto" }}
-          >
-            {loading ? "Querying…" : "Run query"}
-          </button>
-        </div>
-
         {error && (
           <div
             className="section__empty"
@@ -387,6 +313,20 @@ export function AnalyticsClient({ defaultStart, viewerEmail }: Props) {
           </div>
         )}
       </section>
+
+      {agg && (
+        <section className="stat-grid" id="snapshot">
+          <Stat label="Total notes" value={agg.total} />
+          <Stat label="Watchlist" value={agg.watchlistCount} />
+          <Stat label="Sensitive" value={agg.sensitiveCount} />
+          <Stat
+            label="Top category"
+            value={topCategory?.count ?? 0}
+            sub={topCategory?.category ?? "—"}
+          />
+          <Stat label="Categories used" value={agg.byCategory.length} />
+        </section>
+      )}
 
       {agg && (
         <section className="section" id="charts">
@@ -409,134 +349,38 @@ export function AnalyticsClient({ defaultStart, viewerEmail }: Props) {
         </section>
       )}
 
-      {agg && (
-        <section className="section" id="summary">
-          <div className="section__head">
-            <div className="section__num">№ 03</div>
-            <h2 className="section__title">
-              Summary <em>counts</em>
-            </h2>
-            {data?.meta.sensitiveRedacted && (
-              <div className="section__sub">
-                Some sensitive-flagged records were excluded. Tick "Include
-                sensitive" to see them.
-              </div>
-            )}
-          </div>
-
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
-              gap: 18,
-            }}
-          >
-            <CountList title="By category" rows={agg.byCategory.map((r) => ({ label: r.category, count: r.count }))} />
-            <CountList title="By house" rows={agg.byHouse.map((r) => ({ label: r.house, count: r.count }))} />
-            <CountList title="By creator" rows={agg.byCreator.slice(0, 8).map((r) => ({ label: r.creator, count: r.count }))} />
-            <CountList
-              title="Flags"
-              rows={[
-                { label: "Watchlist", count: agg.watchlistCount },
-                { label: "Sensitive", count: agg.sensitiveCount },
-                { label: "Total", count: agg.total },
-              ]}
-            />
+      {!agg && !loading && (
+        <section className="section">
+          <div className="section__empty">
+            No data yet — pick a preset above.
           </div>
         </section>
       )}
+    </div>
+  );
+}
 
-      <section className="section" id="records">
-        <div className="section__head">
-          <div className="section__num">№ 04</div>
-          <h2 className="section__title">
-            Records <em>({records.length})</em>
-          </h2>
+function Stat({
+  label,
+  value,
+  sub,
+}: {
+  label: string;
+  value: number | string;
+  sub?: string;
+}) {
+  return (
+    <div className="stat">
+      <div className="stat__value">{value}</div>
+      <div className="stat__label">{label}</div>
+      {sub && (
+        <div
+          className="stat__label"
+          style={{ marginTop: 2, color: "var(--ink-4)", textTransform: "none" }}
+        >
+          {sub}
         </div>
-        {records.length === 0 ? (
-          <div className="section__empty">
-            {loading
-              ? "Loading…"
-              : "No records match. Widen the date range or clear filters."}
-          </div>
-        ) : (
-          <div
-            style={{
-              overflowX: "auto",
-              border: "1px solid var(--rule)",
-              background: "var(--paper-2)",
-            }}
-          >
-            <table
-              style={{
-                width: "100%",
-                borderCollapse: "collapse",
-                fontSize: 13,
-              }}
-            >
-              <thead>
-                <tr style={{ background: "var(--paper-3)", textAlign: "left" }}>
-                  <Th>Date</Th>
-                  <Th>Category</Th>
-                  <Th>Student</Th>
-                  <Th>House</Th>
-                  <Th>Description</Th>
-                  <Th>Action</Th>
-                  <Th>Flags</Th>
-                  <Th>Created by</Th>
-                </tr>
-              </thead>
-              <tbody>
-                {records.map((r) => (
-                  <tr
-                    key={r.id}
-                    style={{ borderTop: "1px solid var(--rule-soft)" }}
-                  >
-                    <Td mono>{dateFmt.format(new Date(r.date))}</Td>
-                    <Td>{r.category ?? "—"}</Td>
-                    <Td>
-                      {r.studentName}
-                      {r.yearLevel && (
-                        <span style={{ color: "var(--ink-3)" }}>
-                          {" "}
-                          · Y{r.yearLevel}
-                        </span>
-                      )}
-                    </Td>
-                    <Td>{r.house ?? "—"}</Td>
-                    <Td>{r.description || r.note || "—"}</Td>
-                    <Td>{r.action || "—"}</Td>
-                    <Td>
-                      {r.watchlist && (
-                        <span className="tag tag--overnight">Watch</span>
-                      )}
-                      {r.sensitive && (
-                        <span
-                          className="tag"
-                          style={{
-                            marginLeft: 4,
-                            background: "var(--coral-soft)",
-                            color: "var(--coral-ink)",
-                          }}
-                        >
-                          Sens.
-                        </span>
-                      )}
-                    </Td>
-                    <Td>{r.createdBy ?? "—"}</Td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </section>
-
-      <footer className="colophon">
-        <div>LAS · Pastoral analytics</div>
-        <div className="colophon__center">Restricted view</div>
-        <div>v0.1 · Read-only · {new Date().getFullYear()}</div>
-      </footer>
+      )}
     </div>
   );
 }
@@ -606,119 +450,5 @@ function FilterChips({
         )}
       </div>
     </div>
-  );
-}
-
-function CountList({
-  title,
-  rows,
-}: {
-  title: string;
-  rows: Array<{ label: string; count: number }>;
-}) {
-  const max = rows.reduce((m, r) => Math.max(m, r.count), 0);
-  return (
-    <div>
-      <div
-        style={{
-          fontFamily: "var(--mono)",
-          fontSize: 11,
-          textTransform: "uppercase",
-          letterSpacing: "0.1em",
-          color: "var(--ink-3)",
-          marginBottom: 8,
-        }}
-      >
-        {title}
-      </div>
-      <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-        {rows.length === 0 && (
-          <span style={{ color: "var(--ink-4)", fontSize: 12 }}>—</span>
-        )}
-        {rows.map((r) => (
-          <div
-            key={r.label}
-            style={{
-              display: "grid",
-              gridTemplateColumns: "1fr auto",
-              gap: 10,
-              fontSize: 13,
-              alignItems: "center",
-            }}
-          >
-            <div
-              style={{
-                position: "relative",
-                background: "var(--paper-2)",
-                padding: "4px 8px",
-                border: "1px solid var(--rule-soft)",
-                overflow: "hidden",
-              }}
-            >
-              <div
-                style={{
-                  position: "absolute",
-                  inset: 0,
-                  width: max ? `${(r.count / max) * 100}%` : 0,
-                  background: "var(--moss-soft)",
-                  zIndex: 0,
-                }}
-              />
-              <span style={{ position: "relative", zIndex: 1 }}>{r.label}</span>
-            </div>
-            <span
-              style={{
-                fontFamily: "var(--mono)",
-                fontSize: 12,
-                color: "var(--ink-2)",
-              }}
-            >
-              {r.count}
-            </span>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function Th({ children }: { children: React.ReactNode }) {
-  return (
-    <th
-      style={{
-        padding: "10px 12px",
-        fontFamily: "var(--mono)",
-        fontSize: 11,
-        textTransform: "uppercase",
-        letterSpacing: "0.1em",
-        color: "var(--ink-3)",
-        fontWeight: 600,
-        whiteSpace: "nowrap",
-      }}
-    >
-      {children}
-    </th>
-  );
-}
-
-function Td({
-  children,
-  mono,
-}: {
-  children: React.ReactNode;
-  mono?: boolean;
-}) {
-  return (
-    <td
-      style={{
-        padding: "8px 12px",
-        verticalAlign: "top",
-        fontFamily: mono ? "var(--mono)" : undefined,
-        fontSize: mono ? 12 : 13,
-        color: "var(--ink)",
-      }}
-    >
-      {children}
-    </td>
   );
 }
