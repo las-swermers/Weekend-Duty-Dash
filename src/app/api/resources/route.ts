@@ -20,14 +20,31 @@ import { INITIAL_RESOURCES } from "@/lib/mock";
 
 export const revalidate = 60;
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   const session = await auth();
   if (!session) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const canAdd =
-    isLaunchpadAdmin(session.user?.email) && isWriteConfigured();
+  const isAdmin = isLaunchpadAdmin(session.user?.email);
+  const writeOk = isWriteConfigured();
+  const canAdd = isAdmin && writeOk;
+
+  const debug = req.nextUrl.searchParams.get("debug") === "1";
+  const debugBlock = debug
+    ? {
+        debug: {
+          signedInAs: session.user?.email ?? null,
+          isAdmin,
+          writeConfigured: writeOk,
+          canAdd,
+          adminEmailsSet: Boolean(process.env.LAUNCHPAD_ADMIN_EMAILS?.trim()),
+          writeUrlSet: Boolean(process.env.LAUNCHPAD_WRITE_URL?.trim()),
+          writeTokenSet: Boolean(process.env.LAUNCHPAD_WRITE_TOKEN?.trim()),
+          sheetCsvSet: Boolean(process.env.LAUNCHPAD_SHEET_CSV_URL?.trim()),
+        },
+      }
+    : {};
 
   if (isSheetMode()) {
     try {
@@ -37,6 +54,7 @@ export async function GET() {
         mode: "sheet",
         editUrl: sheetEditUrl(),
         canAdd,
+        ...debugBlock,
       });
     } catch (err) {
       const status = err instanceof SheetResourcesError ? err.status : 500;
@@ -49,6 +67,7 @@ export async function GET() {
           editUrl: sheetEditUrl(),
           sheetError: message,
           canAdd,
+          ...debugBlock,
         },
         { status },
       );
