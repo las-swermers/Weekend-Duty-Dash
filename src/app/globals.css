@@ -162,6 +162,14 @@ a { color: inherit; }
   gap: 8px;
 }
 
+.masthead__welcome {
+  font-family: var(--mono);
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  color: var(--ink-2);
+  margin-right: 4px;
+}
+
 [data-density="dense"] .masthead__title { font-size: 38px; }
 [data-density="dense"] .masthead { margin-bottom: 22px; padding-bottom: 14px; }
 [data-density="spacious"] .masthead__title { font-size: 68px; }

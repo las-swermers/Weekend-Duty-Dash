@@ -18,6 +18,7 @@ import type { Resource } from "@/types/resource";
 interface Props {
   weekendLabel: string;
   aoc: string;
+  userName: string | null;
   initial: {
     hc: HCStudent[];
     noPa: NoPaStudent[];
@@ -33,7 +34,7 @@ const fetcher = async <T,>(url: string): Promise<T> => {
   return res.json() as Promise<T>;
 };
 
-export function DashboardClient({ weekendLabel, aoc, initial }: Props) {
+export function DashboardClient({ weekendLabel, aoc, userName, initial }: Props) {
   const hc = useSWR<{ students: HCStudent[] }>(
     "/api/orah/health-center",
     fetcher,
@@ -80,10 +81,6 @@ export function DashboardClient({ weekendLabel, aoc, initial }: Props) {
     showToast("Dashboard refreshed");
   }, [hc, noPa, resources, showToast]);
 
-  const handleEmail = useCallback(() => {
-    showToast("Snapshot dialog — coming in Phase 4");
-  }, [showToast]);
-
   const handleJump = useCallback((id: string) => {
     const el = document.getElementById(id);
     if (el) {
@@ -125,10 +122,10 @@ export function DashboardClient({ weekendLabel, aoc, initial }: Props) {
       <Masthead
         weekendLabel={weekendLabel}
         aoc={aoc}
+        userName={userName}
         refreshing={refreshing}
         lastUpdated={lastUpdated}
         onRefresh={handleRefresh}
-        onEmail={handleEmail}
       />
 
       <AlertSummary counts={counts} onJump={handleJump} />
