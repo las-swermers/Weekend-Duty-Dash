@@ -109,6 +109,32 @@ export function DashboardClient({ weekendLabel, aoc, userName, initial }: Props)
     [resources, showToast],
   );
 
+  const handleRemove = useCallback(
+    async (resource: Resource) => {
+      if (!window.confirm(`Remove “${resource.name}” from the launchpad?`)) {
+        return;
+      }
+      try {
+        const res = await fetch("/api/resources", {
+          method: "DELETE",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name: resource.name, url: resource.url }),
+        });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          throw new Error(err.error ?? `HTTP ${res.status}`);
+        }
+        await resources.mutate();
+        showToast(`Removed “${resource.name}”`);
+      } catch (err) {
+        showToast(
+          err instanceof Error ? err.message : "Failed to remove tile",
+        );
+      }
+    },
+    [resources, showToast],
+  );
+
   const counts = useMemo(
     () => ({
       hc: hc.data?.students.length ?? 0,
@@ -141,6 +167,7 @@ export function DashboardClient({ weekendLabel, aoc, userName, initial }: Props)
         editUrl={resources.data?.editUrl ?? null}
         canAdd={resources.data?.canAdd ?? false}
         onAdd={() => setDialogOpen(true)}
+        onRemove={handleRemove}
       />
 
       <footer className="colophon">

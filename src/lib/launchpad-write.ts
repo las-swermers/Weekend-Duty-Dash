@@ -100,7 +100,7 @@ export async function appendLinkViaAppsScript(
   const res = await fetch(writeUrl, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ token, name, url, icon }),
+    body: JSON.stringify({ action: "add", token, name, url, icon }),
     cache: "no-store",
     redirect: "follow",
   });
@@ -133,4 +133,69 @@ export async function appendLinkViaAppsScript(
   revalidateTag(LAUNCHPAD_SHEET_TAG);
 
   return { ok: true, appended: { name, url, icon } };
+}
+
+export interface RemoveLinkInput {
+  name: string;
+  url?: string;
+}
+
+export interface RemoveLinkResult {
+  ok: true;
+  removed: { name: string; url: string };
+}
+
+export async function removeLinkViaAppsScript(
+  input: RemoveLinkInput,
+): Promise<RemoveLinkResult> {
+  const writeUrl = process.env.LAUNCHPAD_WRITE_URL?.trim();
+  const token = process.env.LAUNCHPAD_WRITE_TOKEN?.trim();
+  if (!writeUrl || !token) {
+    throw new LaunchpadWriteError(
+      500,
+      "LAUNCHPAD_WRITE_URL / LAUNCHPAD_WRITE_TOKEN not configured",
+    );
+  }
+
+  const name = input.name.trim();
+  const url = input.url?.trim() ?? "";
+  if (!name) throw new LaunchpadWriteError(400, "name is required");
+
+  const res = await fetch(writeUrl, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ action: "remove", token, name, url }),
+    cache: "no-store",
+    redirect: "follow",
+  });
+  const text = await res.text();
+  if (!res.ok) {
+    throw new LaunchpadWriteError(
+      res.status,
+      `Apps Script ${res.status}: ${text.slice(0, 200)}`,
+    );
+  }
+
+  let parsed: { ok?: boolean; error?: string; removed?: { name: string; url: string } } = {};
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    throw new LaunchpadWriteError(
+      502,
+      `Apps Script returned non-JSON: ${text.slice(0, 200)}`,
+    );
+  }
+  if (!parsed.ok) {
+    throw new LaunchpadWriteError(
+      404,
+      parsed.error ?? "Tile not found in sheet",
+    );
+  }
+
+  revalidateTag(LAUNCHPAD_SHEET_TAG);
+
+  return {
+    ok: true,
+    removed: parsed.removed ?? { name, url },
+  };
 }
