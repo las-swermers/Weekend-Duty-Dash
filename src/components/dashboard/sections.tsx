@@ -101,7 +101,10 @@ export function NoPaSection({ data }: { data: NoPaStudent[] }) {
       {data.length === 0 ? (
         <EmptyState message="No active no-PA flags." />
       ) : (
-        <div role="list">
+        <div
+          role="list"
+          className={data.length > 4 ? "row-grid--two" : undefined}
+        >
           {data.map((s) => (
             <div className="row" key={s.id}>
               <div className="row__initials">{s.initials}</div>
