@@ -3,14 +3,14 @@ import { auth } from "@/lib/auth";
 import { currentWeekendRange, formatWeekendLabel } from "@/lib/dates";
 import { getResources } from "@/lib/kv";
 import { HC_STUDENTS, INITIAL_RESOURCES, NO_PA_STUDENTS } from "@/lib/mock";
-import { getResourcesFromSheet, isSheetConfigured } from "@/lib/sheets";
+import { fetchSheetResources, isSheetMode } from "@/lib/sheet-resources";
 
 export const dynamic = "force-dynamic";
 
 async function loadResources() {
-  if (isSheetConfigured()) {
+  if (isSheetMode()) {
     try {
-      return await getResourcesFromSheet();
+      return await fetchSheetResources();
     } catch {
       return INITIAL_RESOURCES;
     }

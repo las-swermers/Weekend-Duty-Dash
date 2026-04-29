@@ -40,11 +40,13 @@ export function DashboardClient({ weekendLabel, aoc, initial }: Props) {
     fetcher,
     { refreshInterval: 60_000, fallbackData: { students: initial.noPa } },
   );
-  const resources = useSWR<{ resources: Resource[] }>(
-    "/api/resources",
-    fetcher,
-    { fallbackData: { resources: initial.resources } },
-  );
+  const resources = useSWR<{
+    resources: Resource[];
+    mode?: "kv" | "sheet" | "seed" | "fallback";
+    editUrl?: string | null;
+  }>("/api/resources", fetcher, {
+    fallbackData: { resources: initial.resources },
+  });
 
   const [toast, setToast] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
@@ -112,7 +114,11 @@ export function DashboardClient({ weekendLabel, aoc, initial }: Props) {
         <NoPaSection data={noPa.data?.students ?? []} />
       </div>
 
-      <Launchpad resources={resources.data?.resources ?? []} />
+      <Launchpad
+        resources={resources.data?.resources ?? []}
+        mode={resources.data?.mode ?? "kv"}
+        editUrl={resources.data?.editUrl ?? null}
+      />
 
       <footer className="colophon">
         <div>LAS · 1854 Leysin · Internal tool</div>

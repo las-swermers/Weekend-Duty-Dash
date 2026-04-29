@@ -63,14 +63,14 @@ export function HCSection({ data }: { data: HCStudent[] }) {
                 <div className="row__line">{s.name ?? s.reason}</div>
                 <div className="row__sub">
                   <span>{s.dorm}</span>
-                  <span className="sep" />
-                  <span>since {s.since}</span>
-                  {s.name && s.reason && s.reason !== "Currently signed in" && (
+                  {s.location && (
                     <>
                       <span className="sep" />
-                      <span>{s.reason}</span>
+                      <span>{s.location}</span>
                     </>
                   )}
+                  <span className="sep" />
+                  <span>since {s.since}</span>
                 </div>
               </div>
               <div className="row__meta">
@@ -108,6 +108,12 @@ export function NoPaSection({ data }: { data: NoPaStudent[] }) {
               <div className="row__main">
                 <div className="row__line">{s.restriction}</div>
                 <div className="row__sub">
+                  {s.name && (
+                    <>
+                      <span>{s.name}</span>
+                      <span className="sep" />
+                    </>
+                  )}
                   <span>{s.dorm}</span>
                   <span className="sep" />
                   <span>until {s.until}</span>
@@ -121,4 +127,3 @@ export function NoPaSection({ data }: { data: NoPaStudent[] }) {
     </SectionShell>
   );
 }
-

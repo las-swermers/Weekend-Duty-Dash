@@ -1,8 +1,13 @@
-// Live: students who were signed into the Health Center, OR signed
-// onto a "rest in room" pass, at any point during Friday of the
-// current weekend (Europe/Zurich). Reads location-record/timeline
-// for the Friday window plus the live get-current snapshot, merges,
-// and dedupes by student.
+// Live: students who were signed into any Health Center / Nursery /
+// Infirmary location, OR signed onto a "rest in room" pass, at any
+// point during Friday of the current weekend (Europe/Zurich). Reads
+// location-record/timeline for the Friday window plus the live
+// get-current snapshot, merges, and dedupes by student.
+//
+// LAS has a per-dorm HC layout, so the location resolver returns an
+// array of ids. Rest-pass locations are matched either via
+// HC_REST_LOCATION_IDS (numeric) or HC_REST_LOCATION_PATTERN (substring,
+// default "rest").
 
 import { NextResponse } from "next/server";
 
@@ -14,7 +19,7 @@ import {
   buildStudentMap,
   listHouses,
   listStudents,
-  resolveHealthCenterId,
+  resolveHealthCenterLocationIds,
   studentDisplayName,
 } from "@/lib/orah-resources";
 import { HC_STUDENTS } from "@/lib/mock";
@@ -31,6 +36,8 @@ interface DashboardHCStudent {
   reason: string;
   since: string;
   status: "in" | "overnight";
+  location: string;
+  locationId: number;
 }
 
 function parseIdList(env: string | undefined): number[] {
@@ -66,8 +73,6 @@ async function fetchTimeline(
   const all: OrahLocationRecord[] = [];
   let pageIndex = 0;
   const pageSize = 500;
-  // Defensive page cap — Orah pages can theoretically grow large; one Friday
-  // worth of records on a ~400-student campus shouldn't exceed a few hundred.
   while (pageIndex < 20) {
     const resp = await orahCall<OrahEnvelope<OrahLocationRecord[]>>(
       "/open-api/location-record/timeline",
@@ -103,6 +108,8 @@ export async function GET() {
         reason: s.reason,
         since: s.since,
         status: s.status,
+        location: "Health Center",
+        locationId: 0,
       })),
       pulledAt: new Date().toISOString(),
       source: "mock",
@@ -114,20 +121,31 @@ export async function GET() {
     const startISO = friday.start.toISOString();
     const endISO = friday.end.toISOString();
 
-    const hc = await resolveHealthCenterId();
-    const extraHcIds = new Set(parseIdList(process.env.HC_REST_LOCATION_IDS));
+    const hc = await resolveHealthCenterLocationIds();
+    const hcSet = new Set(hc.ids);
+    const restIds = new Set(parseIdList(process.env.HC_REST_LOCATION_IDS));
     const restPattern = (
       process.env.HC_REST_LOCATION_PATTERN ?? "rest"
     ).toLowerCase();
 
     const matchesHcLocation = (loc?: { id: number; name?: string }) => {
       if (!loc) return false;
-      if (loc.id === hc.id) return true;
-      if (extraHcIds.has(loc.id)) return true;
+      if (hcSet.has(loc.id)) return true;
+      if (restIds.has(loc.id)) return true;
       if (
         restPattern &&
         loc.name?.toLowerCase().includes(restPattern)
       ) {
+        return true;
+      }
+      return false;
+    };
+
+    const isRestLocation = (loc?: { id: number; name?: string }) => {
+      if (!loc) return false;
+      if (hcSet.has(loc.id)) return false;
+      if (restIds.has(loc.id)) return true;
+      if (restPattern && loc.name?.toLowerCase().includes(restPattern)) {
         return true;
       }
       return false;
@@ -145,10 +163,9 @@ export async function GET() {
     const studentMap = buildStudentMap(students);
     const houseMap = buildHouseMap(houses);
 
-    // Pick the earliest matching record per student. If no matching record on
-    // Friday, fall back to a current-state record (covers students who
-    // checked in Thu and are still here without a Friday timeline event).
-    const fridayMatches = timeline.filter((r) => matchesHcLocation(r.location));
+    const fridayMatches = timeline.filter((r) =>
+      matchesHcLocation(r.location),
+    );
     const currentMatches = (currentResp.data ?? []).filter(
       (r) => r.type === "in" && matchesHcLocation(r.location),
     );
@@ -178,30 +195,34 @@ export async function GET() {
         ? houseMap.get(student.house.id) ?? "—"
         : "—";
       const { since, status } = describeRecord(r);
-      const isRest =
-        r.location?.id !== hc.id &&
-        (extraHcIds.has(r.location?.id ?? -1) ||
-          (restPattern &&
-            r.location?.name?.toLowerCase().includes(restPattern)));
+      const rest = isRestLocation(r.location);
       return {
         id: r.student.id,
         name: full,
         initials,
         dorm,
-        reason: isRest
+        reason: rest
           ? `Rest pass — ${r.location?.name ?? "in room"}`
           : `In ${r.location?.name ?? "Health Center"}`,
         since,
         status,
+        location: r.location?.name ?? "Health Center",
+        locationId: r.location?.id ?? 0,
       };
     });
 
     out.sort((a, b) => a.name.localeCompare(b.name));
 
+    const byLocation = new Map<string, number>();
+    for (const s of out) {
+      byLocation.set(s.location, (byLocation.get(s.location) ?? 0) + 1);
+    }
+
     return NextResponse.json({
       students: out,
       window: { startISO, endISO, label: "Friday Europe/Zurich" },
-      hcLocation: { id: hc.id, name: hc.name ?? null, via: hc.via },
+      hcLocations: { ids: hc.ids, via: hc.via },
+      byLocation: Array.from(byLocation, ([name, count]) => ({ name, count })),
       pulledAt: new Date().toISOString(),
       source: "orah",
     });

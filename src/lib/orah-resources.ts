@@ -8,6 +8,8 @@ import type {
   OrahEnvelope,
   OrahHouse,
   OrahLocation,
+  OrahLocationRecord,
+  OrahPastoralRecord,
   OrahStudent,
 } from "@/types/orah";
 
@@ -45,71 +47,86 @@ export async function listLocationsFlat(): Promise<OrahLocation[]> {
   return res.data ?? [];
 }
 
-// Resolve the Health Center's location id. Order of precedence:
-//   1. HEALTH_CENTER_LOCATION_ID env var (numeric).
-//   2. Find by name match against HEALTH_CENTER_LOCATION_NAME (default
-//      "Health Center"), case-insensitive substring.
-// Caches the resolved id in module scope for the lifetime of the
-// serverless instance.
-let cachedHcId: number | null = null;
-let cachedHcResolution: { id: number; via: string; name?: string } | null =
-  null;
+// Resolve the set of Health Center / Nursery / Infirmary location ids.
+// LAS has a per-dorm HC layout (e.g. "Savoy Health Center", "BE Nursery"),
+// so this returns an array, not a single id. Order of precedence:
+//   1. HEALTH_CENTER_LOCATION_IDS env var (comma-separated numeric ids).
+//   2. HEALTH_CENTER_LOCATION_ID env var (single id, back-compat).
+//   3. Auto-detect: any location whose name matches HC patterns
+//      ("Health Center", "Nursery", "Infirmary", "Sick Bay") plus any
+//      additional patterns supplied via HEALTH_CENTER_NAME_PATTERNS
+//      (CSV of substrings, case-insensitive).
+const HC_PATTERNS = [
+  /health\s*cent(?:er|re)/i,
+  /nursery/i,
+  /infirmary/i,
+  /sick\s*bay/i,
+  /wellness/i,
+];
 
-export async function resolveHealthCenterId(): Promise<{
-  id: number;
-  via: string;
-  name?: string;
-}> {
-  if (cachedHcResolution) return cachedHcResolution;
+export interface HCResolution {
+  ids: number[];
+  idToName: Map<number, string>;
+  via: "env-ids" | "env-id" | "name-match";
+}
 
-  const envId = process.env.HEALTH_CENTER_LOCATION_ID;
-  if (envId && /^\d+$/.test(envId)) {
-    cachedHcId = Number(envId);
-    cachedHcResolution = { id: cachedHcId, via: "env" };
-    return cachedHcResolution;
+let cachedHc: HCResolution | null = null;
+
+export async function resolveHealthCenterLocationIds(): Promise<HCResolution> {
+  if (cachedHc) return cachedHc;
+
+  const plural = process.env.HEALTH_CENTER_LOCATION_IDS;
+  if (plural) {
+    const ids = plural
+      .split(",")
+      .map((s) => Number(s.trim()))
+      .filter((n) => Number.isFinite(n) && n > 0);
+    if (ids.length > 0) {
+      cachedHc = { ids, idToName: new Map(), via: "env-ids" };
+      return cachedHc;
+    }
   }
 
-  const target = (
-    process.env.HEALTH_CENTER_LOCATION_NAME ?? "Health Center"
-  ).toLowerCase();
+  const single = process.env.HEALTH_CENTER_LOCATION_ID;
+  if (single && /^\d+$/.test(single)) {
+    cachedHc = { ids: [Number(single)], idToName: new Map(), via: "env-id" };
+    return cachedHc;
+  }
+
+  const extra = (process.env.HEALTH_CENTER_NAME_PATTERNS ?? "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .map((s) => new RegExp(s, "i"));
+  const patterns = [...HC_PATTERNS, ...extra];
 
   const all = await listLocationsFlat();
-  // Search top-level + their child_locations for any name containing the
-  // target string.
-  const candidates: Array<{ id: number; name: string }> = [];
+  const matches = new Map<number, string>();
+  const consider = (id: number, name: string | undefined) => {
+    if (!name) return;
+    if (patterns.some((p) => p.test(name))) matches.set(id, name);
+  };
+
   for (const loc of all) {
-    if (loc.name && loc.name.toLowerCase().includes(target)) {
-      candidates.push({ id: loc.id, name: loc.name });
-    }
+    consider(loc.id, loc.name);
     for (const child of loc.child_locations ?? []) {
-      if (child.name && child.name.toLowerCase().includes(target)) {
-        candidates.push({ id: child.id, name: child.name });
-      }
+      consider(child.id, child.name);
     }
   }
 
-  if (candidates.length === 0) {
+  if (matches.size === 0) {
     throw new OrahError(
       404,
-      `No location matched "${target}". Set HEALTH_CENTER_LOCATION_ID env var with the numeric id (visit /api/orah/locations to list).`,
-    );
-  }
-  if (candidates.length > 1) {
-    throw new OrahError(
-      409,
-      `Multiple locations matched "${target}" (${candidates
-        .map((c) => `${c.name}#${c.id}`)
-        .join(", ")}). Set HEALTH_CENTER_LOCATION_ID env var to disambiguate.`,
+      "No locations matched HC patterns. Set HEALTH_CENTER_LOCATION_IDS (comma-separated ids from /api/orah/locations) or extend HEALTH_CENTER_NAME_PATTERNS.",
     );
   }
 
-  cachedHcId = candidates[0].id;
-  cachedHcResolution = {
-    id: candidates[0].id,
+  cachedHc = {
+    ids: Array.from(matches.keys()),
+    idToName: matches,
     via: "name-match",
-    name: candidates[0].name,
   };
-  return cachedHcResolution;
+  return cachedHc;
 }
 
 export function buildHouseMap(houses: OrahHouse[]): Map<number, string> {
@@ -120,6 +137,90 @@ export function buildStudentMap(
   students: OrahStudent[],
 ): Map<number, OrahStudent> {
   return new Map(students.map((s) => [s.id, s]));
+}
+
+// Resolve a parent zone (e.g. "Signed Out" id 1721, "Student Life Trips"
+// id 2141) into the set of its child location ids plus the zone id
+// itself. Records can be stamped against either the zone or a specific
+// child, so both should be considered when filtering.
+export async function getZoneAndChildren(
+  zoneId: number,
+): Promise<{ ids: Set<number>; idToName: Map<number, string> }> {
+  const all = await listLocationsFlat();
+  const idToName = new Map<number, string>();
+  for (const loc of all) {
+    if (loc.id !== zoneId) continue;
+    idToName.set(loc.id, loc.name);
+    for (const child of loc.child_locations ?? []) {
+      idToName.set(child.id, child.name);
+    }
+    break;
+  }
+  return { ids: new Set(idToName.keys()), idToName };
+}
+
+// Paginate through location-record/timeline for a date range. Same
+// pagination convention as the pastoral timeline (page_size + page_index,
+// stop on a partial page).
+export async function listLocationRecordTimeline(
+  startISO: string,
+  endISO?: string,
+  opts: { pageSize?: number; maxPages?: number; revalidate?: number } = {},
+): Promise<OrahLocationRecord[]> {
+  const pageSize = opts.pageSize ?? 50;
+  const maxPages = opts.maxPages ?? 40;
+  const out: OrahLocationRecord[] = [];
+  for (let page = 0; page < maxPages; page += 1) {
+    const res = await orahCall<OrahEnvelope<OrahLocationRecord[]>>(
+      "/open-api/location-record/timeline",
+      {
+        query: {
+          date_range: endISO
+            ? { start_date: startISO, end_date: endISO }
+            : { start_date: startISO },
+          page_size: pageSize,
+          page_index: page,
+        },
+      },
+      { revalidate: opts.revalidate },
+    );
+    const records = res.data ?? [];
+    out.push(...records);
+    if (records.length < pageSize) break;
+  }
+  return out;
+}
+
+// Paginate through pastoral/timeline for a date range, stopping when a
+// page returns fewer records than requested (or after maxPages as a
+// safety bound).
+export async function listPastoralTimeline(
+  startISO: string,
+  endISO?: string,
+  opts: { pageSize?: number; maxPages?: number; revalidate?: number } = {},
+): Promise<OrahPastoralRecord[]> {
+  const pageSize = opts.pageSize ?? 50;
+  const maxPages = opts.maxPages ?? 20;
+  const out: OrahPastoralRecord[] = [];
+  for (let page = 0; page < maxPages; page += 1) {
+    const res = await orahCall<OrahEnvelope<OrahPastoralRecord[]>>(
+      "/open-api/pastoral/timeline",
+      {
+        query: {
+          date_range: endISO
+            ? { start_date: startISO, end_date: endISO }
+            : { start_date: startISO },
+          page_size: pageSize,
+          page_index: page,
+        },
+      },
+      { revalidate: opts.revalidate },
+    );
+    const records = res.data ?? [];
+    out.push(...records);
+    if (records.length < pageSize) break;
+  }
+  return out;
 }
 
 export function studentDisplayName(s: OrahStudent | undefined): {

@@ -3,10 +3,11 @@ import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { getResources } from "@/lib/kv";
 import {
-  SheetError,
-  getResourcesFromSheet,
-  isSheetConfigured,
-} from "@/lib/sheets";
+  SheetResourcesError,
+  fetchSheetResources,
+  isSheetMode,
+  sheetEditUrl,
+} from "@/lib/sheet-resources";
 import { INITIAL_RESOURCES } from "@/lib/mock";
 
 export const revalidate = 60;
@@ -17,34 +18,40 @@ export async function GET() {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  if (isSheetConfigured()) {
+  if (isSheetMode()) {
     try {
-      const resources = await getResourcesFromSheet();
-      return NextResponse.json({ resources, source: "sheet" });
-    } catch (err) {
-      const message =
-        err instanceof SheetError
-          ? `${err.message}${err.bodyPreview ? ` — ${err.bodyPreview}` : ""}`
-          : err instanceof Error
-            ? err.message
-            : "sheet error";
-      // Surface the failure but still serve something usable so the
-      // dashboard isn't empty if the sheet is briefly unreachable.
+      const resources = await fetchSheetResources();
       return NextResponse.json({
-        resources: INITIAL_RESOURCES,
-        source: "fallback",
-        sheetError: message,
+        resources,
+        mode: "sheet",
+        editUrl: sheetEditUrl(),
       });
+    } catch (err) {
+      const status = err instanceof SheetResourcesError ? err.status : 500;
+      const message =
+        err instanceof Error ? err.message : "Sheet fetch failed";
+      // Fall through to seed list so the dashboard isn't empty if the
+      // sheet is briefly unreachable.
+      return NextResponse.json(
+        {
+          resources: INITIAL_RESOURCES,
+          mode: "fallback",
+          editUrl: sheetEditUrl(),
+          sheetError: message,
+        },
+        { status },
+      );
     }
   }
 
   try {
     const resources = await getResources();
-    return NextResponse.json({ resources, source: "kv" });
+    return NextResponse.json({ resources, mode: "kv", editUrl: null });
   } catch {
     return NextResponse.json({
       resources: INITIAL_RESOURCES,
-      source: "fallback",
+      mode: "seed",
+      editUrl: null,
     });
   }
 }
