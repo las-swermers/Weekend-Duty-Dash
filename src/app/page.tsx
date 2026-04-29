@@ -24,10 +24,9 @@ async function loadResources() {
 
 export default async function DashboardPage() {
   const session = await auth();
-  const aoc =
-    session?.user?.name ??
-    session?.user?.email?.split("@")[0] ??
-    "S. Whitfield";
+  const userName =
+    session?.user?.name ?? session?.user?.email?.split("@")[0] ?? null;
+  const aoc = "TBD";
 
   const range = currentWeekendRange();
   const weekendLabel = `${formatWeekendLabel(range)} · MMXXVI`;
@@ -38,6 +37,7 @@ export default async function DashboardPage() {
     <DashboardClient
       weekendLabel={weekendLabel.toUpperCase()}
       aoc={aoc}
+      userName={userName}
       initial={{
         hc: HC_STUDENTS,
         noPa: NO_PA_STUDENTS,

@@ -3,23 +3,24 @@
 import Link from "next/link";
 
 import { Icon, LASCrest } from "@/components/dashboard/icon";
+import { signOutAction } from "@/lib/auth-actions";
 
 interface Props {
   weekendLabel: string;
   aoc: string;
+  userName: string | null;
   refreshing: boolean;
   lastUpdated: string;
   onRefresh: () => void;
-  onEmail: () => void;
 }
 
 export function Masthead({
   weekendLabel,
   aoc,
+  userName,
   refreshing,
   lastUpdated,
   onRefresh,
-  onEmail,
 }: Props) {
   return (
     <header className="masthead">
@@ -40,6 +41,9 @@ export function Masthead({
         </div>
       </div>
       <div className="masthead__actions">
+        {userName ? (
+          <span className="masthead__welcome">Welcome {userName}</span>
+        ) : null}
         <Link href="/analytics" className="btn btn--ghost btn--sm">
           <Icon name="folder" size={14} />
           Analytics
@@ -57,14 +61,11 @@ export function Masthead({
           />
           Refresh
         </button>
-        <button
-          type="button"
-          className="btn btn--primary btn--sm"
-          onClick={onEmail}
-        >
-          <Icon name="send" size={14} />
-          Email duty team
-        </button>
+        <form action={signOutAction}>
+          <button type="submit" className="btn btn--ghost btn--sm">
+            Sign out
+          </button>
+        </form>
       </div>
     </header>
   );
