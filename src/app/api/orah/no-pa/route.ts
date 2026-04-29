@@ -1,8 +1,8 @@
-// Live: students currently flagged with the "No Physical Activity"
-// pastoral category. Pulls pastoral/timeline for a configurable
-// look-back window, filters by category name, dedupes by student
-// (most recent record wins), drops records whose watchlist_expiry
-// is in the past.
+// Live: students currently on the No-PA watchlist. Pulls
+// pastoral/timeline for a configurable look-back window, filters by
+// category name AND watchlist flag (so one-off notes that weren't
+// added to the watchlist don't show), dedupes by student (most recent
+// record wins), drops records whose watchlist_expiry is in the past.
 
 import { NextResponse } from "next/server";
 
@@ -84,8 +84,11 @@ export async function GET() {
     const houseMap = buildHouseMap(houses);
 
     // Dedupe by student id, keeping the most recent record per student.
+    // Only watchlist-flagged records count — a plain pastoral note in the
+    // No-PA category is just a log entry, not an active restriction.
     const latestByStudent = new Map<number, OrahPastoralRecord>();
     for (const r of records) {
+      if (!r.watchlist) continue;
       if (!r.pastoral_category) continue;
       if (r.pastoral_category.name.toLowerCase() !== targetCategory) continue;
       const existing = latestByStudent.get(r.student.id);
