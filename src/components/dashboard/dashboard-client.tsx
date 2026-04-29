@@ -181,6 +181,7 @@ export function DashboardClient({ weekendLabel, aoc, userName, initial }: Props)
           "Saturday Clipboard",
           "Sunday Clipboard",
           "Friday Night in the Dorm",
+          "Saturday Night in the Dorm",
           "1-hour early check-in",
           "2-hour early check-in",
         ]}
