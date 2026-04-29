@@ -3,6 +3,10 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import useSWR from "swr";
 
+import {
+  AddLinkDialog,
+  type AddLinkDraft,
+} from "@/components/dashboard/add-link-dialog";
 import { AlertSummary } from "@/components/dashboard/alert-summary";
 import { Launchpad } from "@/components/dashboard/launchpad";
 import { Masthead } from "@/components/dashboard/masthead";
@@ -44,10 +48,12 @@ export function DashboardClient({ weekendLabel, aoc, initial }: Props) {
     resources: Resource[];
     mode?: "kv" | "sheet" | "seed" | "fallback";
     editUrl?: string | null;
+    canAdd?: boolean;
   }>("/api/resources", fetcher, {
     fallbackData: { resources: initial.resources },
   });
 
+  const [dialogOpen, setDialogOpen] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [lastUpdated, setLastUpdated] = useState("just now");
@@ -88,6 +94,24 @@ export function DashboardClient({ weekendLabel, aoc, initial }: Props) {
     }
   }, []);
 
+  const handleAddSave = useCallback(
+    async (draft: AddLinkDraft) => {
+      const res = await fetch("/api/resources", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(draft),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error ?? `HTTP ${res.status}`);
+      }
+      await resources.mutate();
+      setDialogOpen(false);
+      showToast(`Added “${draft.name}”`);
+    },
+    [resources, showToast],
+  );
+
   const counts = useMemo(
     () => ({
       hc: hc.data?.students.length ?? 0,
@@ -118,6 +142,8 @@ export function DashboardClient({ weekendLabel, aoc, initial }: Props) {
         resources={resources.data?.resources ?? []}
         mode={resources.data?.mode ?? "kv"}
         editUrl={resources.data?.editUrl ?? null}
+        canAdd={resources.data?.canAdd ?? false}
+        onAdd={() => setDialogOpen(true)}
       />
 
       <footer className="colophon">
@@ -127,6 +153,12 @@ export function DashboardClient({ weekendLabel, aoc, initial }: Props) {
         </div>
         <div>v0.1 · Read-only · {new Date().getFullYear()}</div>
       </footer>
+
+      <AddLinkDialog
+        open={dialogOpen}
+        onClose={() => setDialogOpen(false)}
+        onSave={handleAddSave}
+      />
 
       <Toast message={toast} />
     </div>

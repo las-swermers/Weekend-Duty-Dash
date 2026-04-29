@@ -13,6 +13,7 @@
 //   https://docs.google.com/spreadsheets/d/<SHEET_ID>/export?format=csv&gid=0
 
 import type { Resource } from "@/types/resource";
+import { LAUNCHPAD_SHEET_TAG } from "@/lib/launchpad-write";
 import { slugify } from "@/lib/utils";
 
 export class SheetResourcesError extends Error {
@@ -109,7 +110,7 @@ export async function fetchSheetResources(): Promise<Resource[]> {
 
   const res = await fetch(url, {
     headers: { Accept: "text/csv,text/plain,*/*" },
-    next: { revalidate: 300 },
+    next: { revalidate: 300, tags: [LAUNCHPAD_SHEET_TAG] },
   });
   if (!res.ok) {
     throw new SheetResourcesError(

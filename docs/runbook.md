@@ -87,6 +87,136 @@ Custom header: `&header=Authorization` (sent as `Bearer <key>`).
 Edits to the sheet propagate within a few minutes. No admin UI in the
 app — the sheet is the source of truth.
 
+## Apps Script for adding links from the dashboard
+
+Optional. When configured, designated admins see an "+ Add link" tile
+on the launchpad and can append rows to the sheet without leaving the
+dashboard. The sheet itself stays private to its owner — the script
+runs as the owner so it has edit access automatically.
+
+### 1. Generate a shared secret
+
+```
+openssl rand -hex 24
+```
+
+Keep the output handy — it goes in two places.
+
+### 2. Open the script editor
+
+In your launchpad sheet → **Extensions → Apps Script**. Replace
+everything in `Code.gs` with:
+
+```js
+// LAS Weekend Duty Dashboard — launchpad write-back.
+//
+// Append rows to the launchpad sheet from the dashboard's Add button.
+// Deploy:  Deploy → New deployment → Type: Web app
+//          → Execute as: Me (sheet owner)
+//          → Who has access: Anyone
+//          → Deploy → copy the URL.
+//
+// Paste the URL into LAUNCHPAD_WRITE_URL on Vercel and the SHARED_SECRET
+// below into LAUNCHPAD_WRITE_TOKEN.
+
+const SHARED_SECRET = 'PASTE_YOUR_RANDOM_HEX_HERE';
+const SHEET_NAME = 'Sheet1'; // tab the dashboard reads from
+
+function doPost(e) {
+  try {
+    const body = JSON.parse(e.postData.contents || '{}');
+    if (body.token !== SHARED_SECRET) {
+      return _json({ error: 'unauthorized' });
+    }
+
+    const name = String(body.name || '').trim();
+    const url = String(body.url || '').trim();
+    const icon = String(body.icon || 'link').trim();
+
+    if (!name || !url) return _json({ error: 'name and url required' });
+    if (!/^https?:\/\//.test(url)) {
+      return _json({ error: 'url must start with http(s)://' });
+    }
+
+    const sheet = SpreadsheetApp.getActive().getSheetByName(SHEET_NAME);
+    if (!sheet) return _json({ error: 'sheet tab not found: ' + SHEET_NAME });
+
+    const headers = sheet
+      .getRange(1, 1, 1, sheet.getLastColumn())
+      .getValues()[0]
+      .map(function (h) { return String(h).trim().toLowerCase(); });
+
+    const nextOrder = sheet.getLastRow(); // append at end
+    const row = headers.map(function (h) {
+      if (h === 'name') return name;
+      if (h === 'url') return url;
+      if (h === 'icon') return icon;
+      if (h === 'order') return nextOrder;
+      return '';
+    });
+    sheet.appendRow(row);
+
+    return _json({ ok: true, name: name, url: url, icon: icon });
+  } catch (err) {
+    return _json({ error: String(err) });
+  }
+}
+
+function doGet() {
+  return _json({ ok: true, message: 'launchpad write endpoint' });
+}
+
+function _json(obj) {
+  return ContentService
+    .createTextOutput(JSON.stringify(obj))
+    .setMimeType(ContentService.MimeType.JSON);
+}
+```
+
+Replace `PASTE_YOUR_RANDOM_HEX_HERE` with the secret from step 1.
+Replace `Sheet1` with whichever tab the dashboard reads from if it
+isn't `Sheet1`.
+
+### 3. Deploy as a web app
+
+In the Apps Script editor → **Deploy → New deployment**:
+
+- **Type**: Web app
+- **Execute as**: Me (this is the key — it runs as the sheet owner so
+  it has edit permission)
+- **Who has access**: Anyone
+- Click **Deploy**, authorise when prompted, then copy the **Web app URL**
+
+> "Anyone" sounds scary but is fine here: the script enforces the shared
+> secret, so a request without the right token gets `{"error":"unauthorized"}`.
+
+### 4. Set Vercel env vars
+
+| Var | Value |
+|---|---|
+| `LAUNCHPAD_ADMIN_EMAILS` | your `@las.ch` email (comma-separate to add more) |
+| `LAUNCHPAD_WRITE_URL` | the deployment URL from step 3 |
+| `LAUNCHPAD_WRITE_TOKEN` | the secret from step 1 |
+
+Redeploy. Sign in as one of the admin emails — you'll see "+ Add link"
+on the launchpad. Anyone else's session won't.
+
+### 5. Updating the script
+
+If you edit the script later (e.g. to add validation), you must **Deploy
+→ Manage deployments → edit existing deployment → New version → Deploy**.
+Just saving the file isn't enough; the live URL points at the deployed
+version, not the editor copy.
+
+### Troubleshooting
+
+| Symptom | Likely cause | Fix |
+|---|---|---|
+| "+ Add link" tile not showing | Email not in `LAUNCHPAD_ADMIN_EMAILS`, or one of the write env vars is missing | Check Vercel env vars, redeploy |
+| Add returns `unauthorized` | Token mismatch | Re-paste secret into `SHARED_SECRET` and `LAUNCHPAD_WRITE_TOKEN` |
+| Add returns `sheet tab not found` | `SHEET_NAME` in script doesn't match the sheet tab | Update `SHEET_NAME` and redeploy script |
+| Tile doesn't appear after Add | Cache lag | The dashboard busts the cache automatically, but try clicking Refresh |
+
 ## Finding the Health Center location id
 
 After deploy, sign in and visit `/api/orah/locations`. The response
