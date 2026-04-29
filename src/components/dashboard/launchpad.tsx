@@ -7,10 +7,9 @@ import { CATEGORIES, type Resource, type ResourceCategory } from "@/types/resour
 
 interface Props {
   resources: Resource[];
-  onAdd: (category: ResourceCategory) => void;
 }
 
-export function Launchpad({ resources, onAdd }: Props) {
+export function Launchpad({ resources }: Props) {
   const grouped = useMemo(() => {
     const g: Partial<Record<ResourceCategory, Resource[]>> = {};
     for (const r of resources) {
@@ -25,12 +24,8 @@ export function Launchpad({ resources, onAdd }: Props) {
     <section className="launchpad" id="launchpad">
       <div className="launchpad__head">
         <h2>
-          The <em>launchpad</em>
+          <em>Launch</em>
         </h2>
-        <p className="launchpad__lede">
-          Living references and rosters. Bookmark anything that gets opened
-          more than twice on a duty weekend.
-        </p>
       </div>
 
       {CATEGORIES.map((cat) => {
@@ -62,14 +57,6 @@ export function Launchpad({ resources, onAdd }: Props) {
                   </div>
                 </a>
               ))}
-              <button
-                type="button"
-                className="tile tile--add"
-                onClick={() => onAdd(cat)}
-              >
-                <Icon name="plus" size={18} />
-                <div className="tile__name">Add</div>
-              </button>
             </div>
           </div>
         );

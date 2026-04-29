@@ -1,10 +1,13 @@
-// Live: students currently signed into the Health Center, enriched
-// with name + dorm. Calls /open-api/location-record/get-current and
-// filters client-side to the configured HC location id.
+// Live: students who were signed into the Health Center, OR signed
+// onto a "rest in room" pass, at any point during Friday of the
+// current weekend (Europe/Zurich). Reads location-record/timeline
+// for the Friday window plus the live get-current snapshot, merges,
+// and dedupes by student.
 
 import { NextResponse } from "next/server";
 
 import { auth } from "@/lib/auth";
+import { fridayOfCurrentWeekend } from "@/lib/dates";
 import { OrahError, isMockMode, orahCall } from "@/lib/orah";
 import {
   buildHouseMap,
@@ -30,6 +33,15 @@ interface DashboardHCStudent {
   status: "in" | "overnight";
 }
 
+function parseIdList(env: string | undefined): number[] {
+  if (!env) return [];
+  return env
+    .split(",")
+    .map((s) => s.trim())
+    .filter((s) => /^\d+$/.test(s))
+    .map(Number);
+}
+
 function describeRecord(rec: OrahLocationRecord): {
   since: string;
   status: "in" | "overnight";
@@ -45,6 +57,34 @@ function describeRecord(rec: OrahLocationRecord): {
     hour12: false,
   }).format(recordedAt);
   return { since, status: overnight ? "overnight" : "in" };
+}
+
+async function fetchTimeline(
+  startISO: string,
+  endISO: string,
+): Promise<OrahLocationRecord[]> {
+  const all: OrahLocationRecord[] = [];
+  let pageIndex = 0;
+  const pageSize = 500;
+  // Defensive page cap — Orah pages can theoretically grow large; one Friday
+  // worth of records on a ~400-student campus shouldn't exceed a few hundred.
+  while (pageIndex < 20) {
+    const resp = await orahCall<OrahEnvelope<OrahLocationRecord[]>>(
+      "/open-api/location-record/timeline",
+      {
+        query: {
+          date_range: { start_date: startISO, end_date: endISO },
+        },
+        page_size: pageSize,
+        page_index: pageIndex,
+      },
+    );
+    const batch = resp.data ?? [];
+    all.push(...batch);
+    if (batch.length < pageSize) break;
+    pageIndex += 1;
+  }
+  return all;
 }
 
 export async function GET() {
@@ -70,9 +110,31 @@ export async function GET() {
   }
 
   try {
-    const hc = await resolveHealthCenterId();
+    const friday = fridayOfCurrentWeekend();
+    const startISO = friday.start.toISOString();
+    const endISO = friday.end.toISOString();
 
-    const [recordsResp, students, houses] = await Promise.all([
+    const hc = await resolveHealthCenterId();
+    const extraHcIds = new Set(parseIdList(process.env.HC_REST_LOCATION_IDS));
+    const restPattern = (
+      process.env.HC_REST_LOCATION_PATTERN ?? "rest"
+    ).toLowerCase();
+
+    const matchesHcLocation = (loc?: { id: number; name?: string }) => {
+      if (!loc) return false;
+      if (loc.id === hc.id) return true;
+      if (extraHcIds.has(loc.id)) return true;
+      if (
+        restPattern &&
+        loc.name?.toLowerCase().includes(restPattern)
+      ) {
+        return true;
+      }
+      return false;
+    };
+
+    const [timeline, currentResp, students, houses] = await Promise.all([
+      fetchTimeline(startISO, endISO),
       orahCall<OrahEnvelope<OrahLocationRecord[]>>(
         "/open-api/location-record/get-current",
       ),
@@ -83,30 +145,62 @@ export async function GET() {
     const studentMap = buildStudentMap(students);
     const houseMap = buildHouseMap(houses);
 
-    const records = (recordsResp.data ?? []).filter(
-      (r) => r.type === "in" && r.location?.id === hc.id,
+    // Pick the earliest matching record per student. If no matching record on
+    // Friday, fall back to a current-state record (covers students who
+    // checked in Thu and are still here without a Friday timeline event).
+    const fridayMatches = timeline.filter((r) => matchesHcLocation(r.location));
+    const currentMatches = (currentResp.data ?? []).filter(
+      (r) => r.type === "in" && matchesHcLocation(r.location),
     );
 
-    const out: DashboardHCStudent[] = records.map((r) => {
+    const earliestPerStudent = new Map<number, OrahLocationRecord>();
+    for (const r of fridayMatches) {
+      const existing = earliestPerStudent.get(r.student.id);
+      if (
+        !existing ||
+        new Date(r.record_time) < new Date(existing.record_time)
+      ) {
+        earliestPerStudent.set(r.student.id, r);
+      }
+    }
+    for (const r of currentMatches) {
+      if (!earliestPerStudent.has(r.student.id)) {
+        earliestPerStudent.set(r.student.id, r);
+      }
+    }
+
+    const out: DashboardHCStudent[] = Array.from(
+      earliestPerStudent.values(),
+    ).map((r) => {
       const student = studentMap.get(r.student.id);
       const { full, initials } = studentDisplayName(student);
       const dorm = student?.house?.id
         ? houseMap.get(student.house.id) ?? "—"
         : "—";
       const { since, status } = describeRecord(r);
+      const isRest =
+        r.location?.id !== hc.id &&
+        (extraHcIds.has(r.location?.id ?? -1) ||
+          (restPattern &&
+            r.location?.name?.toLowerCase().includes(restPattern)));
       return {
-        id: r.id,
+        id: r.student.id,
         name: full,
         initials,
         dorm,
-        reason: "Currently signed in",
+        reason: isRest
+          ? `Rest pass — ${r.location?.name ?? "in room"}`
+          : `In ${r.location?.name ?? "Health Center"}`,
         since,
         status,
       };
     });
 
+    out.sort((a, b) => a.name.localeCompare(b.name));
+
     return NextResponse.json({
       students: out,
+      window: { startISO, endISO, label: "Friday Europe/Zurich" },
       hcLocation: { id: hc.id, name: hc.name ?? null, via: hc.via },
       pulledAt: new Date().toISOString(),
       source: "orah",

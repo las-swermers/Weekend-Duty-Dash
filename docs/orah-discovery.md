@@ -167,6 +167,8 @@ plus `page_size` / `page_index`.
 | `ORAH_BASE_URL` | `https://open-api-ireland.orah.com` | Default; change only if Orah moves regions. |
 | `HEALTH_CENTER_LOCATION_ID` | (TBD — find via `/api/orah/locations`) | Numeric id. Highest priority. |
 | `HEALTH_CENTER_LOCATION_NAME` | `Health Center` | Used for name match if id not set. |
+| `HC_REST_LOCATION_IDS` | (optional, comma-separated) | Extra location ids that count as "in HC" — typically rest-in-room pass locations. |
+| `HC_REST_LOCATION_PATTERN` | `rest` | Case-insensitive substring matched against `location.name` to flag rest passes when ids aren't pinned. |
 | `NO_PA_CATEGORY_NAME` | TBD after seeing real pastoral categories | Pastoral category name. |
 | `USE_MOCK_DATA` | (unset) | Fall back to mock for not-yet-wired routes. |
 

@@ -1,5 +1,7 @@
 "use client";
 
+import Link from "next/link";
+
 import { Icon, LASCrest } from "@/components/dashboard/icon";
 
 interface Props {
@@ -38,6 +40,10 @@ export function Masthead({
         </div>
       </div>
       <div className="masthead__actions">
+        <Link href="/analytics" className="btn btn--ghost btn--sm">
+          <Icon name="folder" size={14} />
+          Analytics
+        </Link>
         <button
           type="button"
           className="btn btn--ghost btn--sm"

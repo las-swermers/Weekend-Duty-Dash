@@ -5,8 +5,6 @@ import { severityFor } from "@/lib/utils";
 export interface AlertCounts {
   hc: number;
   noPa: number;
-  travel: number;
-  trips: number;
 }
 
 interface Props {
@@ -27,22 +25,10 @@ const ITEMS: Array<{
     sectionId: "sec-hc",
   },
   {
-    key: "travel",
-    short: "Travel",
-    label: "open & approved travel requests",
-    sectionId: "sec-travel",
-  },
-  {
     key: "noPa",
     short: "No P.A.",
     label: "students flagged no physical activity",
     sectionId: "sec-nopa",
-  },
-  {
-    key: "trips",
-    short: "Trips",
-    label: "scheduled activity trips this weekend",
-    sectionId: "sec-trips",
   },
 ];
 
