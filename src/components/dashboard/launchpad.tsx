@@ -10,6 +10,7 @@ interface Props {
   canAdd?: boolean;
   onAdd?: () => void;
   onRemove?: (resource: Resource) => void;
+  onEdit?: (resource: Resource) => void;
 }
 
 export function Launchpad({
@@ -19,9 +20,11 @@ export function Launchpad({
   canAdd = false,
   onAdd,
   onRemove,
+  onEdit,
 }: Props) {
   const sheetMode = mode === "sheet" || mode === "fallback";
   const canRemove = canAdd && sheetMode && Boolean(onRemove);
+  const canEditTile = canAdd && sheetMode && Boolean(onEdit);
 
   return (
     <section className="launchpad" id="launchpad">
@@ -60,6 +63,17 @@ export function Launchpad({
                 <Icon name="external" size={13} />
               </div>
             </a>
+            {canEditTile && (
+              <button
+                type="button"
+                className="tile__edit"
+                onClick={() => onEdit?.(r)}
+                aria-label={`Edit ${r.name}`}
+                title={`Edit ${r.name}`}
+              >
+                <Icon name="refresh" size={12} />
+              </button>
+            )}
             {canRemove && (
               <button
                 type="button"

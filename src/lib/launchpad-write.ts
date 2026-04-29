@@ -135,6 +135,95 @@ export async function appendLinkViaAppsScript(
   return { ok: true, appended: { name, url, icon } };
 }
 
+export interface UpdateLinkInput {
+  originalName: string;
+  originalUrl?: string;
+  name: string;
+  url: string;
+  icon?: string;
+}
+
+export interface UpdateLinkResult {
+  ok: true;
+  updated: { name: string; url: string; icon: string };
+}
+
+export async function updateLinkViaAppsScript(
+  input: UpdateLinkInput,
+): Promise<UpdateLinkResult> {
+  const writeUrl = process.env.LAUNCHPAD_WRITE_URL?.trim();
+  const token = process.env.LAUNCHPAD_WRITE_TOKEN?.trim();
+  if (!writeUrl || !token) {
+    throw new LaunchpadWriteError(
+      500,
+      "LAUNCHPAD_WRITE_URL / LAUNCHPAD_WRITE_TOKEN not configured",
+    );
+  }
+
+  const originalName = input.originalName.trim();
+  const originalUrl = input.originalUrl?.trim() ?? "";
+  const name = input.name.trim();
+  const url = input.url.trim();
+  if (!originalName) {
+    throw new LaunchpadWriteError(400, "originalName is required");
+  }
+  if (!name) throw new LaunchpadWriteError(400, "name is required");
+  if (!url.startsWith("https://") && !url.startsWith("http://")) {
+    throw new LaunchpadWriteError(400, "url must start with https:// or http://");
+  }
+  const icon = normaliseIcon(input.icon);
+
+  const res = await fetch(writeUrl, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      action: "update",
+      token,
+      originalName,
+      originalUrl,
+      name,
+      url,
+      icon,
+    }),
+    cache: "no-store",
+    redirect: "follow",
+  });
+  const text = await res.text();
+  if (!res.ok) {
+    throw new LaunchpadWriteError(
+      res.status,
+      `Apps Script ${res.status}: ${text.slice(0, 200)}`,
+    );
+  }
+
+  let parsed: {
+    ok?: boolean;
+    error?: string;
+    updated?: { name: string; url: string; icon: string };
+  } = {};
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    throw new LaunchpadWriteError(
+      502,
+      `Apps Script returned non-JSON: ${text.slice(0, 200)}`,
+    );
+  }
+  if (!parsed.ok) {
+    throw new LaunchpadWriteError(
+      404,
+      parsed.error ?? "Tile not found in sheet",
+    );
+  }
+
+  revalidateTag(LAUNCHPAD_SHEET_TAG);
+
+  return {
+    ok: true,
+    updated: parsed.updated ?? { name, url, icon },
+  };
+}
+
 export interface RemoveLinkInput {
   name: string;
   url?: string;
