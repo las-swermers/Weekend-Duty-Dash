@@ -616,10 +616,10 @@ a { color: inherit; }
 }
 .tile-cell > .tile { flex: 1; }
 
-.tile__delete {
+.tile__delete,
+.tile__edit {
   position: absolute;
   top: 8px;
-  left: 8px;
   width: 22px;
   height: 22px;
   display: inline-flex;
@@ -635,13 +635,21 @@ a { color: inherit; }
   padding: 0;
   z-index: 2;
 }
+.tile__delete { left: 8px; }
+.tile__edit { left: 36px; }
 .tile-cell:hover .tile__delete,
-.tile__delete:focus-visible {
+.tile-cell:hover .tile__edit,
+.tile__delete:focus-visible,
+.tile__edit:focus-visible {
   opacity: 1;
 }
 .tile__delete:hover {
   color: var(--accent);
   border-color: var(--accent);
+}
+.tile__edit:hover {
+  color: var(--navy);
+  border-color: var(--navy);
 }
 
 /* ───────── Footer ───────── */

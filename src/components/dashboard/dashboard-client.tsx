@@ -6,6 +6,7 @@ import useSWR from "swr";
 import {
   AddLinkDialog,
   type AddLinkDraft,
+  type EditLinkDraft,
 } from "@/components/dashboard/add-link-dialog";
 import { AlertSummary } from "@/components/dashboard/alert-summary";
 import { Launchpad } from "@/components/dashboard/launchpad";
@@ -55,6 +56,7 @@ export function DashboardClient({ weekendLabel, aoc, userName, initial }: Props)
   });
 
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [editTarget, setEditTarget] = useState<Resource | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [lastUpdated, setLastUpdated] = useState("just now");
@@ -92,9 +94,10 @@ export function DashboardClient({ weekendLabel, aoc, userName, initial }: Props)
   }, []);
 
   const handleAddSave = useCallback(
-    async (draft: AddLinkDraft) => {
+    async (draft: AddLinkDraft | EditLinkDraft) => {
+      const isEdit = "originalName" in draft;
       const res = await fetch("/api/resources", {
-        method: "POST",
+        method: isEdit ? "PATCH" : "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(draft),
       });
@@ -103,8 +106,13 @@ export function DashboardClient({ weekendLabel, aoc, userName, initial }: Props)
         throw new Error(err.error ?? `HTTP ${res.status}`);
       }
       await resources.mutate();
-      setDialogOpen(false);
-      showToast(`Added “${draft.name}”`);
+      if (isEdit) {
+        setEditTarget(null);
+        showToast(`Updated “${draft.name}”`);
+      } else {
+        setDialogOpen(false);
+        showToast(`Added “${draft.name}”`);
+      }
     },
     [resources, showToast],
   );
@@ -168,6 +176,7 @@ export function DashboardClient({ weekendLabel, aoc, userName, initial }: Props)
         canAdd={resources.data?.canAdd ?? false}
         onAdd={() => setDialogOpen(true)}
         onRemove={handleRemove}
+        onEdit={(r) => setEditTarget(r)}
       />
 
       <footer className="colophon">
@@ -180,7 +189,24 @@ export function DashboardClient({ weekendLabel, aoc, userName, initial }: Props)
 
       <AddLinkDialog
         open={dialogOpen}
+        mode="add"
         onClose={() => setDialogOpen(false)}
+        onSave={handleAddSave}
+      />
+
+      <AddLinkDialog
+        open={editTarget !== null}
+        mode="edit"
+        initial={
+          editTarget
+            ? {
+                name: editTarget.name,
+                url: editTarget.url,
+                icon: editTarget.icon,
+              }
+            : null
+        }
+        onClose={() => setEditTarget(null)}
         onSave={handleAddSave}
       />
 

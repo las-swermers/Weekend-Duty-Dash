@@ -28,13 +28,26 @@ export interface AddLinkDraft {
   icon: string;
 }
 
-interface Props {
-  open: boolean;
-  onClose: () => void;
-  onSave: (draft: AddLinkDraft) => Promise<void> | void;
+export interface EditLinkDraft extends AddLinkDraft {
+  originalName: string;
+  originalUrl: string;
 }
 
-export function AddLinkDialog({ open, onClose, onSave }: Props) {
+interface Props {
+  open: boolean;
+  mode?: "add" | "edit";
+  initial?: { name: string; url: string; icon: string } | null;
+  onClose: () => void;
+  onSave: (draft: AddLinkDraft | EditLinkDraft) => Promise<void> | void;
+}
+
+export function AddLinkDialog({
+  open,
+  mode = "add",
+  initial,
+  onClose,
+  onSave,
+}: Props) {
   const [name, setName] = useState("");
   const [url, setUrl] = useState("");
   const [icon, setIcon] = useState("link");
@@ -42,17 +55,17 @@ export function AddLinkDialog({ open, onClose, onSave }: Props) {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (open) {
-      setName("");
-      setUrl("");
-      setIcon("link");
-      setError(null);
-      setSubmitting(false);
-    }
-  }, [open]);
+    if (!open) return;
+    setName(initial?.name ?? "");
+    setUrl(initial?.url ?? "");
+    setIcon(initial?.icon ?? "link");
+    setError(null);
+    setSubmitting(false);
+  }, [open, initial]);
 
   if (!open) return null;
 
+  const isEdit = mode === "edit";
   const valid = name.trim().length > 0 && url.trim().startsWith("https://");
 
   const handleSave = async (e: React.FormEvent) => {
@@ -61,7 +74,16 @@ export function AddLinkDialog({ open, onClose, onSave }: Props) {
     setSubmitting(true);
     setError(null);
     try {
-      await onSave({ name: name.trim(), url: url.trim(), icon });
+      const base = { name: name.trim(), url: url.trim(), icon };
+      if (isEdit && initial) {
+        await onSave({
+          ...base,
+          originalName: initial.name,
+          originalUrl: initial.url,
+        });
+      } else {
+        await onSave(base);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Save failed");
       setSubmitting(false);
@@ -78,13 +100,16 @@ export function AddLinkDialog({ open, onClose, onSave }: Props) {
         <button type="button" className="dialog__close" onClick={onClose}>
           <Icon name="x" size={16} />
         </button>
-        <div className="dialog__eyebrow">Launchpad · New link</div>
+        <div className="dialog__eyebrow">
+          Launchpad · {isEdit ? "Edit link" : "New link"}
+        </div>
         <h2 className="dialog__title">
-          Add a <em>link</em>
+          {isEdit ? "Edit" : "Add"} a <em>link</em>
         </h2>
         <div className="dialog__sub">
-          Appended to the source Google Sheet. Visible to everyone on the
-          dashboard within ~30 seconds.
+          {isEdit
+            ? "Updates the row in the source Google Sheet. Changes appear on the dashboard within ~30 seconds."
+            : "Appended to the source Google Sheet. Visible to everyone on the dashboard within ~30 seconds."}
         </div>
 
         <div className="field">
@@ -159,8 +184,12 @@ export function AddLinkDialog({ open, onClose, onSave }: Props) {
             className="btn btn--primary btn--sm"
             disabled={!valid || submitting}
           >
-            <Icon name="plus" size={13} />
-            {submitting ? "Saving…" : "Add to launchpad"}
+            <Icon name={isEdit ? "refresh" : "plus"} size={13} />
+            {submitting
+              ? "Saving…"
+              : isEdit
+                ? "Save changes"
+                : "Add to launchpad"}
           </button>
         </div>
       </form>

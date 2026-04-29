@@ -131,6 +131,7 @@ function doPost(e) {
 
     const action = String(body.action || 'add').toLowerCase();
     if (action === 'remove') return _remove(body);
+    if (action === 'update') return _update(body);
     return _add(body);
   } catch (err) {
     return _json({ error: String(err) });
@@ -201,6 +202,58 @@ function _remove(body) {
     return _json({ ok: true, removed: { name: name, url: url } });
   }
   return _json({ error: 'tile not found: ' + name });
+}
+
+function _update(body) {
+  const originalName = String(body.originalName || '').trim();
+  const originalUrl = String(body.originalUrl || '').trim();
+  const name = String(body.name || '').trim();
+  const url = String(body.url || '').trim();
+  const icon = String(body.icon || 'link').trim();
+
+  if (!originalName) return _json({ error: 'originalName is required' });
+  if (!name || !url) return _json({ error: 'name and url required' });
+  if (!/^https?:\/\//.test(url)) {
+    return _json({ error: 'url must start with http(s)://' });
+  }
+
+  const sheet = SpreadsheetApp.getActive().getSheetByName(SHEET_NAME);
+  if (!sheet) return _json({ error: 'sheet tab not found: ' + SHEET_NAME });
+
+  const lastRow = sheet.getLastRow();
+  if (lastRow < 2) return _json({ error: 'no rows to update' });
+
+  const headers = sheet
+    .getRange(1, 1, 1, sheet.getLastColumn())
+    .getValues()[0]
+    .map(function (h) { return String(h).trim().toLowerCase(); });
+  const nameCol = headers.indexOf('name');
+  const urlCol = headers.indexOf('url');
+  const iconCol = headers.indexOf('icon');
+  if (nameCol === -1 || urlCol === -1) {
+    return _json({ error: 'sheet missing "name" or "url" column' });
+  }
+
+  const rows = sheet
+    .getRange(2, 1, lastRow - 1, sheet.getLastColumn())
+    .getValues();
+  for (let i = 0; i < rows.length; i++) {
+    const rowName = String(rows[i][nameCol] || '').trim();
+    if (rowName !== originalName) continue;
+    if (originalUrl) {
+      const rowUrl = String(rows[i][urlCol] || '').trim();
+      if (rowUrl !== originalUrl) continue;
+    }
+    const sheetRow = i + 2;
+    sheet.getRange(sheetRow, nameCol + 1).setValue(name);
+    sheet.getRange(sheetRow, urlCol + 1).setValue(url);
+    if (iconCol !== -1) sheet.getRange(sheetRow, iconCol + 1).setValue(icon);
+    return _json({
+      ok: true,
+      updated: { name: name, url: url, icon: icon },
+    });
+  }
+  return _json({ error: 'tile not found: ' + originalName });
 }
 
 function doGet() {
