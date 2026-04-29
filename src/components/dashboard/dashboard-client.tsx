@@ -3,24 +3,13 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import useSWR from "swr";
 
-import { AddResourceDialog, type ResourceDraft } from "@/components/dashboard/add-resource-dialog";
 import { AlertSummary } from "@/components/dashboard/alert-summary";
 import { Launchpad } from "@/components/dashboard/launchpad";
 import { Masthead } from "@/components/dashboard/masthead";
-import {
-  HCSection,
-  NoPaSection,
-  TravelSection,
-  TripsSection,
-} from "@/components/dashboard/sections";
+import { HCSection, NoPaSection } from "@/components/dashboard/sections";
 import { Toast } from "@/components/dashboard/toast";
-import type {
-  HCStudent,
-  MockTrip,
-  NoPaStudent,
-  TravelRequest,
-} from "@/lib/mock";
-import type { Resource, ResourceCategory } from "@/types/resource";
+import type { HCStudent, NoPaStudent } from "@/lib/mock";
+import type { Resource } from "@/types/resource";
 
 interface Props {
   weekendLabel: string;
@@ -28,8 +17,6 @@ interface Props {
   initial: {
     hc: HCStudent[];
     noPa: NoPaStudent[];
-    travel: TravelRequest[];
-    trips: MockTrip[];
     resources: Resource[];
   };
 }
@@ -53,28 +40,14 @@ export function DashboardClient({ weekendLabel, aoc, initial }: Props) {
     fetcher,
     { refreshInterval: 60_000, fallbackData: { students: initial.noPa } },
   );
-  const travel = useSWR<{ requests: TravelRequest[] }>(
-    "/api/orah/travel-requests",
-    fetcher,
-    { refreshInterval: 60_000, fallbackData: { requests: initial.travel } },
-  );
-  const trips = useSWR<{ trips: MockTrip[] }>(
-    "/api/orah/scheduled-trips",
-    fetcher,
-    { refreshInterval: 60_000, fallbackData: { trips: initial.trips } },
-  );
   const resources = useSWR<{
     resources: Resource[];
-    mode?: "kv" | "sheet" | "seed";
+    mode?: "kv" | "sheet" | "seed" | "fallback";
     editUrl?: string | null;
   }>("/api/resources", fetcher, {
     fallbackData: { resources: initial.resources },
   });
 
-  const [dialogOpen, setDialogOpen] = useState(false);
-  const [dialogCategory, setDialogCategory] = useState<ResourceCategory | null>(
-    null,
-  );
   const [toast, setToast] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [lastUpdated, setLastUpdated] = useState("just now");
@@ -95,17 +68,11 @@ export function DashboardClient({ weekendLabel, aoc, initial }: Props) {
 
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
-    await Promise.all([
-      hc.mutate(),
-      noPa.mutate(),
-      travel.mutate(),
-      trips.mutate(),
-      resources.mutate(),
-    ]);
+    await Promise.all([hc.mutate(), noPa.mutate(), resources.mutate()]);
     setLastUpdated("just now");
     setRefreshing(false);
     showToast("Dashboard refreshed");
-  }, [hc, noPa, travel, trips, resources, showToast]);
+  }, [hc, noPa, resources, showToast]);
 
   const handleEmail = useCallback(() => {
     showToast("Snapshot dialog — coming in Phase 4");
@@ -121,46 +88,13 @@ export function DashboardClient({ weekendLabel, aoc, initial }: Props) {
     }
   }, []);
 
-  const handleAdd = useCallback((category: ResourceCategory) => {
-    setDialogCategory(category);
-    setDialogOpen(true);
-  }, []);
-
-  const handleSave = useCallback(
-    async (draft: ResourceDraft) => {
-      try {
-        const res = await fetch("/api/resources", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(draft),
-        });
-        if (!res.ok) {
-          const err = await res.json().catch(() => ({}));
-          throw new Error(err.error ?? `HTTP ${res.status}`);
-        }
-        await resources.mutate();
-        setDialogOpen(false);
-        showToast(`Added “${draft.name}” to ${draft.category}`);
-      } catch (err) {
-        showToast(
-          err instanceof Error ? `Add failed: ${err.message}` : "Add failed",
-        );
-      }
-    },
-    [resources, showToast],
-  );
-
-  const counts = useMemo(() => {
-    const t = travel.data?.requests ?? [];
-    return {
+  const counts = useMemo(
+    () => ({
       hc: hc.data?.students.length ?? 0,
       noPa: noPa.data?.students.length ?? 0,
-      travel: t.filter(
-        (r) => r.status === "approved" || r.status === "pending",
-      ).length,
-      trips: trips.data?.trips.length ?? 0,
-    };
-  }, [hc.data, noPa.data, travel.data, trips.data]);
+    }),
+    [hc.data, noPa.data],
+  );
 
   return (
     <div className="app" data-density="balanced">
@@ -178,13 +112,10 @@ export function DashboardClient({ weekendLabel, aoc, initial }: Props) {
       <div className="sections">
         <HCSection data={hc.data?.students ?? []} />
         <NoPaSection data={noPa.data?.students ?? []} />
-        <TravelSection data={travel.data?.requests ?? []} />
-        <TripsSection data={trips.data?.trips ?? []} />
       </div>
 
       <Launchpad
         resources={resources.data?.resources ?? []}
-        onAdd={handleAdd}
         mode={resources.data?.mode ?? "kv"}
         editUrl={resources.data?.editUrl ?? null}
       />
@@ -196,13 +127,6 @@ export function DashboardClient({ weekendLabel, aoc, initial }: Props) {
         </div>
         <div>v0.1 · Read-only · {new Date().getFullYear()}</div>
       </footer>
-
-      <AddResourceDialog
-        open={dialogOpen}
-        defaultCategory={dialogCategory}
-        onClose={() => setDialogOpen(false)}
-        onSave={handleSave}
-      />
 
       <Toast message={toast} />
     </div>

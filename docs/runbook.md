@@ -37,6 +37,8 @@ complete.
 | OAuth fails for valid `@las.ch` user | OAuth consent screen is not Internal | Google Cloud Console → OAuth consent → User type: Internal |
 | Email goes to spam | Domain not verified in Resend | Add DNS records, wait for verification |
 | KV resources list empty | Seed didn't run | `kv set resources:v1 [...]` via Vercel CLI or Storage UI |
+| Launchpad shows seed list, not real links | `LAUNCHPAD_SHEET_CSV_URL` is not set or sheet returned non-CSV | Publish sheet to web → CSV, set env var, redeploy |
+| Launchpad missing a row | Row missing `name`/`url`/valid `category`, or `url` not https | Fix the row in the sheet — invalid rows are silently skipped |
 
 ## Logs
 
@@ -64,10 +66,26 @@ Custom header: `&header=Authorization` (sent as `Bearer <key>`).
 - [x] Phase 1 — project setup & deploy skeleton
 - [x] Phase 0 — Orah discovery (auth + base + endpoint surface confirmed; see `docs/orah-discovery.md`)
 - [~] Phase 2 — Orah integration (HC live; no-PA / travel / trips still on mock)
-- [ ] Phase 3 — resource launchpad (KV-backed; route + UI exist, KV needs to be provisioned on Vercel)
+- [x] Phase 3 — resource launchpad (Google-Sheet-backed; KV remains as legacy fallback)
 - [ ] Phase 4 — email snapshot (route + template exist; UI dialog pending)
 - [ ] Phase 5 — polish
 - [ ] Phase 6 — scheduled email (optional)
+
+## Wiring the launchpad to a Google Sheet
+
+1. Create a sheet titled e.g. "Weekend Dashboard — Launchpad".
+2. First row (headers, lower-case): `name,url,icon,order`.
+3. One row per link. `url` must be `https://…`. `icon` is one of:
+   `link, book, award, users, bus, clipboard, flag, heart, message,
+   phone, calendar, folder, map, key, bell` (anything else falls back
+   to `link`). `order` is an optional integer; lower numbers appear
+   first.
+4. File → Share → Publish to web → Entire document, **CSV** → Publish.
+5. Copy the URL it gives you and set `LAUNCHPAD_SHEET_CSV_URL` on Vercel.
+6. Redeploy (or wait ~5 min for the cache to roll).
+
+Edits to the sheet propagate within a few minutes. No admin UI in the
+app — the sheet is the source of truth.
 
 ## Finding the Health Center location id
 

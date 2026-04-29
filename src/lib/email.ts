@@ -32,7 +32,6 @@ export interface SnapshotTrip extends SnapshotPerson {
 export interface SnapshotResource {
   name: string;
   url: string;
-  category: string;
 }
 
 export interface SnapshotData {
@@ -87,7 +86,7 @@ function renderSnapshotHtml(d: SnapshotData): string {
   const resources = d.resources
     .map(
       (r) =>
-        `<li style="padding:4px 0"><a href="${r.url}" style="color:#d43b1b;text-decoration:none">${r.name}</a> <span style="color:#8ea0b1;font-size:12px">· ${r.category}</span></li>`,
+        `<li style="padding:4px 0"><a href="${r.url}" style="color:#d43b1b;text-decoration:none">${r.name}</a></li>`,
     )
     .join("");
 
@@ -154,7 +153,7 @@ function renderSnapshotText(d: SnapshotData): string {
   );
   block(
     "Launchpad",
-    d.resources.map((r) => `${r.name} (${r.category}): ${r.url}`),
+    d.resources.map((r) => `${r.name}: ${r.url}`),
   );
 
   lines.push(`Dashboard: ${d.dashboardUrl}`);

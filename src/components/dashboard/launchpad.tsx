@@ -1,37 +1,23 @@
 "use client";
 
 import { Icon } from "@/components/dashboard/icon";
-import type { Resource, ResourceCategory } from "@/types/resource";
+import type { Resource } from "@/types/resource";
 
 interface Props {
   resources: Resource[];
-  onAdd: (category: ResourceCategory) => void;
-  mode?: "kv" | "sheet" | "seed";
+  mode?: "kv" | "sheet" | "seed" | "fallback";
   editUrl?: string | null;
 }
 
-export function Launchpad({ resources, onAdd, mode = "kv", editUrl }: Props) {
-  const sheetMode = mode === "sheet";
+export function Launchpad({ resources, mode = "kv", editUrl }: Props) {
+  const sheetMode = mode === "sheet" || mode === "fallback";
 
   return (
     <section className="launchpad" id="launchpad">
       <div className="launchpad__head">
         <h2>
-          The <em>launchpad</em>
+          <em>Launch</em>
         </h2>
-        <p className="launchpad__lede">
-          {sheetMode ? (
-            <>
-              Living references and rosters. Edits happen in the source Google
-              Sheet — changes appear here within a few minutes.
-            </>
-          ) : (
-            <>
-              Living references and rosters. Bookmark anything that gets opened
-              more than twice on a duty weekend.
-            </>
-          )}
-        </p>
         {sheetMode && editUrl && (
           <a
             href={editUrl}
@@ -64,16 +50,6 @@ export function Launchpad({ resources, onAdd, mode = "kv", editUrl }: Props) {
             </div>
           </a>
         ))}
-        {!sheetMode && (
-          <button
-            type="button"
-            className="tile tile--add"
-            onClick={() => onAdd("Logistics")}
-          >
-            <Icon name="plus" size={18} />
-            <div className="tile__name">Add</div>
-          </button>
-        )}
       </div>
     </section>
   );

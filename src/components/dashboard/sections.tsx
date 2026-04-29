@@ -2,12 +2,7 @@
 
 import type { ReactNode } from "react";
 
-import type {
-  HCStudent,
-  MockTrip,
-  NoPaStudent,
-  TravelRequest,
-} from "@/lib/mock";
+import type { HCStudent, NoPaStudent } from "@/lib/mock";
 
 interface ShellProps {
   num: string;
@@ -54,7 +49,7 @@ export function HCSection({ data }: { data: HCStudent[] }) {
       num="01"
       title="Health"
       titleEm="Center"
-      sub="Residents observed Friday — confirm with nurse before lights-out."
+      sub="Residents observed Friday."
       meta={`${data.length} STUDENTS`}
     >
       {data.length === 0 ? (
@@ -125,114 +120,6 @@ export function NoPaSection({ data }: { data: NoPaStudent[] }) {
                 </div>
               </div>
               <div className="row__meta">—</div>
-            </div>
-          ))}
-        </div>
-      )}
-    </SectionShell>
-  );
-}
-
-export function TravelSection({ data }: { data: TravelRequest[] }) {
-  const signedOut = data.filter((d) => d.status === "signed-out").length;
-  const approved = data.filter((d) => d.status === "approved").length;
-  const pending = data.filter((d) => d.status === "pending").length;
-  const visible = data.slice(0, 6);
-  const sub =
-    signedOut > 0
-      ? `${signedOut} currently signed out.`
-      : `${approved} approved · ${pending} awaiting decision.`;
-
-  return (
-    <SectionShell
-      id="sec-travel"
-      num="03"
-      title="Travel"
-      titleEm="Requests"
-      sub={sub}
-      meta={`${data.length} TOTAL`}
-    >
-      {data.length === 0 ? (
-        <EmptyState message="No travel records yet for this weekend." />
-      ) : (
-        <>
-          <div role="list">
-            {visible.map((t) => (
-              <div className="row" key={t.id}>
-                <div className="row__initials">{t.initials}</div>
-                <div className="row__main">
-                  <div className="row__line">
-                    {t.name ? `${t.name} → ${t.destination}` : t.destination}
-                    {t.chaperone && t.chaperone !== "—" && (
-                      <span style={{ color: "var(--ink-3)" }}>
-                        {" "}
-                        · {t.chaperone}
-                      </span>
-                    )}
-                  </div>
-                  <div className="row__sub">
-                    <span>{t.dorm}</span>
-                    <span className="sep" />
-                    <span>
-                      {t.return && t.return !== "—"
-                        ? `${t.depart} → ${t.return}`
-                        : `out ${t.depart}`}
-                    </span>
-                  </div>
-                </div>
-                <div className="row__meta">
-                  <span className={`tag tag--${t.status}`}>{t.status}</span>
-                </div>
-              </div>
-            ))}
-          </div>
-          {data.length > visible.length && (
-            <div
-              style={{
-                marginTop: 14,
-                fontFamily: "var(--mono)",
-                fontSize: 11,
-                color: "var(--ink-4)",
-                letterSpacing: "0.1em",
-                textTransform: "uppercase",
-              }}
-            >
-              + {data.length - visible.length} more
-            </div>
-          )}
-        </>
-      )}
-    </SectionShell>
-  );
-}
-
-export function TripsSection({ data }: { data: MockTrip[] }) {
-  const total = data.reduce((s, t) => s + t.count, 0);
-  return (
-    <SectionShell
-      id="sec-trips"
-      num="04"
-      title="Scheduled"
-      titleEm="Trips"
-      sub={`${total} student-spots across ${data.length} activities.`}
-      meta={`${data.length} OUTINGS`}
-    >
-      {data.length === 0 ? (
-        <EmptyState message="No trips scheduled." />
-      ) : (
-        <div role="list">
-          {data.map((t) => (
-            <div className="trip-row" key={t.id}>
-              <div>
-                <h3 className="trip-row__title">{t.title}</h3>
-                <div className="trip-row__sub">
-                  Lead · {t.lead} · {t.depart} → {t.return}
-                </div>
-              </div>
-              <div className="trip-row__count">
-                {t.count}
-                <small>signed up</small>
-              </div>
             </div>
           ))}
         </div>
