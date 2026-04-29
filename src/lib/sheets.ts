@@ -5,27 +5,22 @@
 //
 // Sheet schema (header row required):
 //
-//   name,url,icon,category,order
+//   name,url,icon,order
 //
-//   - name      : display label, required
-//   - url       : https URL, required
-//   - icon      : one of the names in src/components/dashboard/icon.tsx
-//                 (link, book, award, users, bus, clipboard, flag,
-//                 heart, message, phone, calendar, folder, map, key,
-//                 bell). Defaults to "link" if blank/unrecognised.
-//   - category  : Reference | Logistics | Health & Wellbeing |
-//                 Discipline & Accountability | Communications |
-//                 Activities | Admin
-//   - order     : optional integer; lower numbers appear first within
-//                 the category. Defaults to row order.
+//   - name   : display label, required
+//   - url    : https URL, required
+//   - icon   : one of link, book, award, users, bus, clipboard, flag,
+//              heart, message, phone, calendar, folder, map, key, bell.
+//              Defaults to "link" if blank/unrecognised.
+//   - order  : optional integer; lower numbers appear first. Defaults
+//              to row order.
 //
 // Rows where required fields are missing or invalid are skipped.
 
-import { CATEGORIES, type Resource, type ResourceCategory } from "@/types/resource";
+import type { Resource } from "@/types/resource";
 import { slugify } from "@/lib/utils";
 
 const SHEET_TTL = 300;
-const CATEGORY_SET = new Set<ResourceCategory>(CATEGORIES);
 
 export class SheetError extends Error {
   constructor(
@@ -104,21 +99,15 @@ function rowsToObjects(rows: string[][]): RowMap[] {
   });
 }
 
-function isCategory(value: string): value is ResourceCategory {
-  return CATEGORY_SET.has(value as ResourceCategory);
-}
-
 function mapRowToResource(
   row: RowMap,
   fallbackOrder: number,
 ): Resource | null {
   const name = row.name?.trim();
   const url = row.url?.trim();
-  const category = row.category?.trim();
 
   if (!name || !url) return null;
   if (!url.startsWith("https://")) return null;
-  if (!isCategory(category)) return null;
 
   const order = Number.parseInt(row.order ?? "", 10);
   return {
@@ -126,7 +115,6 @@ function mapRowToResource(
     name,
     url,
     icon: row.icon?.trim() || "link",
-    category,
     addedBy: "sheet",
     addedAt: new Date(0).toISOString(),
     order: Number.isFinite(order) ? order : fallbackOrder,

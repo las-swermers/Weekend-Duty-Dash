@@ -74,10 +74,12 @@ Custom header: `&header=Authorization` (sent as `Bearer <key>`).
 ## Wiring the launchpad to a Google Sheet
 
 1. Create a sheet titled e.g. "Weekend Dashboard — Launchpad".
-2. First row (headers, lower-case): `name,url,icon,category,order`.
-3. One row per link. `url` must be `https://…`. `category` must be one of:
-   `Reference`, `Logistics`, `Health & Wellbeing`,
-   `Discipline & Accountability`, `Communications`, `Activities`, `Admin`.
+2. First row (headers, lower-case): `name,url,icon,order`.
+3. One row per link. `url` must be `https://…`. `icon` is one of:
+   `link, book, award, users, bus, clipboard, flag, heart, message,
+   phone, calendar, folder, map, key, bell` (anything else falls back
+   to `link`). `order` is an optional integer; lower numbers appear
+   first.
 4. File → Share → Publish to web → Entire document, **CSV** → Publish.
 5. Copy the URL it gives you and set `LAUNCHPAD_SHEET_CSV_URL` on Vercel.
 6. Redeploy (or wait ~5 min for the cache to roll).
