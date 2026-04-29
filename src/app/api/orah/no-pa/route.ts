@@ -4,7 +4,7 @@
 // added to the watchlist don't show), dedupes by student (most recent
 // record wins), drops records whose watchlist_expiry is in the past.
 
-import { NextResponse } from "next/server";
+import { NextResponse, type NextRequest } from "next/server";
 
 import { auth } from "@/lib/auth";
 import { OrahError, isMockMode } from "@/lib/orah";
@@ -53,7 +53,7 @@ function lookbackStartIso(): string {
   return start.toISOString();
 }
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   const session = await auth();
   if (!session) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -67,6 +67,7 @@ export async function GET() {
     });
   }
 
+  const debug = req.nextUrl.searchParams.get("debug") === "1";
   const targetCategory = (
     process.env.NO_PA_CATEGORY_NAME ?? "No Physical Activity"
   ).toLowerCase();
@@ -86,11 +87,36 @@ export async function GET() {
     // Dedupe by student id, keeping the most recent record per student.
     // Only watchlist-flagged records count — a plain pastoral note in the
     // No-PA category is just a log entry, not an active restriction.
+    const debugTrace: Array<{
+      id: number;
+      studentId: number;
+      studentName: string;
+      date: string;
+      category: string | null;
+      watchlist: boolean;
+      watchlist_expiry: string | null;
+      excluded: string | null;
+    }> = [];
+
     const latestByStudent = new Map<number, OrahPastoralRecord>();
     for (const r of records) {
+      const inCategory =
+        r.pastoral_category?.name?.toLowerCase() === targetCategory;
+      if (debug && inCategory) {
+        const studentForTrace = studentMap.get(r.student.id);
+        debugTrace.push({
+          id: r.id,
+          studentId: r.student.id,
+          studentName: studentDisplayName(studentForTrace).full,
+          date: r.date,
+          category: r.pastoral_category?.name ?? null,
+          watchlist: Boolean(r.watchlist),
+          watchlist_expiry: r.watchlist_expiry ?? null,
+          excluded: r.watchlist ? null : "no-watchlist-flag",
+        });
+      }
       if (!r.watchlist) continue;
-      if (!r.pastoral_category) continue;
-      if (r.pastoral_category.name.toLowerCase() !== targetCategory) continue;
+      if (!inCategory) continue;
       const existing = latestByStudent.get(r.student.id);
       if (!existing || new Date(r.date) > new Date(existing.date)) {
         latestByStudent.set(r.student.id, r);
@@ -106,6 +132,10 @@ export async function GET() {
         r.watchlist_expiry &&
         new Date(r.watchlist_expiry).getTime() < now
       ) {
+        if (debug) {
+          const trace = debugTrace.find((t) => t.id === r.id);
+          if (trace) trace.excluded = "expired";
+        }
         continue;
       }
       const student = studentMap.get(r.student.id);
@@ -137,6 +167,21 @@ export async function GET() {
         lookbackDays: Number(process.env.NO_PA_LOOKBACK_DAYS) || 60,
         recordsScanned: records.length,
       },
+      ...(debug
+        ? {
+            debug: {
+              keptIds: out.map((s) => s.id),
+              records: debugTrace,
+              counts: {
+                inCategory: debugTrace.length,
+                withWatchlist: debugTrace.filter((t) => t.watchlist).length,
+                expired: debugTrace.filter((t) => t.excluded === "expired")
+                  .length,
+                kept: out.length,
+              },
+            },
+          }
+        : {}),
       pulledAt: new Date().toISOString(),
       source: "orah",
     });

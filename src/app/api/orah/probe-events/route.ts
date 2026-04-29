@@ -76,6 +76,21 @@ const PROBES: Array<{ path: string; body: unknown }> = [
   { path: "/open-api/notes/list", body: {} },
   { path: "/open-api/template/list", body: {} },
 
+  // Watchlist as a first-class concept — Orah's UI has a "Watchlist" tab
+  // that shows currently-flagged students, and the count there can differ
+  // from pastoral records with watchlist=true (e.g. 9 students on the
+  // No-PA watchlist vs 6 pastoral records with the flag in 30 days).
+  // Likely RPC names for that view.
+  { path: "/open-api/watchlist/list", body: {} },
+  { path: "/open-api/watchlist/timeline", body: RECENT_RANGE_BODY },
+  { path: "/open-api/watchlist/get-students", body: {} },
+  { path: "/open-api/student-watchlist/list", body: {} },
+  { path: "/open-api/student-watchlist/get-current", body: {} },
+  { path: "/open-api/flag/list", body: {} },
+  { path: "/open-api/student-flag/list", body: {} },
+  { path: "/open-api/restriction/list", body: {} },
+  { path: "/open-api/medical-flag/list", body: {} },
+
   // Roll timeline filtered to trip-style types — proven to work, just
   // surfacing here for comparison.
   { path: "/open-api/roll/timeline", body: { query: { status: "All", date_range: { start_date: "2026-04-01T00:00:00.000Z" }, page_size: 5, page_index: 0 } } },
