@@ -30,7 +30,7 @@ export function Masthead({
           Leysin American School · Weekend Duty
         </div>
         <h1 className="masthead__title">
-          Weekend <em>Duty</em> Dashboard
+          LAS <em>Duty</em> Dashboard
         </h1>
         <div className="masthead__sub">
           <span className="masthead__date">{weekendLabel}</span>
@@ -44,6 +44,10 @@ export function Masthead({
         {userName ? (
           <span className="masthead__welcome">Welcome {userName}</span>
         ) : null}
+        <Link href="/live" className="btn btn--ghost btn--sm">
+          <Icon name="folder" size={14} />
+          Live
+        </Link>
         <Link href="/analytics" className="btn btn--ghost btn--sm">
           <Icon name="folder" size={14} />
           Analytics

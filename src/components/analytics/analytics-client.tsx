@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
+import { PastoralCharts } from "@/components/analytics/charts";
 import type {
   EnrichedPastoral,
   PastoralFilters,
@@ -388,9 +389,30 @@ export function AnalyticsClient({ defaultStart, viewerEmail }: Props) {
       </section>
 
       {agg && (
-        <section className="section" id="summary">
+        <section className="section" id="charts">
           <div className="section__head">
             <div className="section__num">№ 02</div>
+            <h2 className="section__title">
+              Visual <em>summary</em>
+            </h2>
+            <div className="section__sub">
+              Trends and breakdowns over the selected window.
+            </div>
+          </div>
+          <PastoralCharts
+            byDay={agg.byDay}
+            byCategory={agg.byCategory}
+            byHouse={agg.byHouse}
+            watchlistCount={agg.watchlistCount}
+            sensitiveCount={agg.sensitiveCount}
+          />
+        </section>
+      )}
+
+      {agg && (
+        <section className="section" id="summary">
+          <div className="section__head">
+            <div className="section__num">№ 03</div>
             <h2 className="section__title">
               Summary <em>counts</em>
             </h2>
@@ -426,7 +448,7 @@ export function AnalyticsClient({ defaultStart, viewerEmail }: Props) {
 
       <section className="section" id="records">
         <div className="section__head">
-          <div className="section__num">№ 03</div>
+          <div className="section__num">№ 04</div>
           <h2 className="section__title">
             Records <em>({records.length})</em>
           </h2>

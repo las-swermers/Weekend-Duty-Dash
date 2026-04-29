@@ -4,9 +4,9 @@ import type { ReactNode } from "react";
 import "@/app/globals.css";
 
 export const metadata: Metadata = {
-  title: "LAS · Weekend Duty Dashboard",
+  title: "LAS Duty Dashboard",
   description:
-    "Single-screen dashboard for LAS Administrators on Call. Live Orah data plus a launchpad for the Google Sheets you reach for every weekend.",
+    "Dashboards for LAS Administrators on Call. Live Orah data plus a launchpad for the Google Sheets you reach for every duty rotation.",
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {

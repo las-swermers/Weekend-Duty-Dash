@@ -1,7 +1,7 @@
 import { signIn } from "@/lib/auth";
 
 export const metadata = {
-  title: "Sign in · Weekend Duty Dashboard",
+  title: "Sign in · LAS Duty Dashboard",
 };
 
 export default function SignInPage() {
@@ -10,7 +10,7 @@ export default function SignInPage() {
       <div className="signin__card">
         <div className="signin__eyebrow">Leysin American School</div>
         <h1 className="signin__title">
-          Weekend <em>Duty</em> Dashboard
+          LAS <em>Duty</em> Dashboard
         </h1>
         <p className="signin__lede">
           Sign in with your <strong>@las.ch</strong> Google account to continue.

@@ -7,6 +7,7 @@ import {
   appendLinkViaAppsScript,
   isLaunchpadAdmin,
   isWriteConfigured,
+  removeLinkViaAppsScript,
 } from "@/lib/launchpad-write";
 import {
   SheetResourcesError,
@@ -112,6 +113,56 @@ export async function POST(req: NextRequest) {
     }
     return NextResponse.json(
       { error: err instanceof Error ? err.message : "write failed" },
+      { status: 500 },
+    );
+  }
+}
+
+export async function DELETE(req: NextRequest) {
+  const session = await auth();
+  if (!session) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  if (!isLaunchpadAdmin(session.user?.email)) {
+    return NextResponse.json(
+      { error: "Not authorised to remove launchpad links" },
+      { status: 403 },
+    );
+  }
+  if (!isSheetMode() || !isWriteConfigured()) {
+    return NextResponse.json(
+      {
+        error:
+          "Launchpad writes are disabled. Set LAUNCHPAD_SHEET_CSV_URL, LAUNCHPAD_WRITE_URL, and LAUNCHPAD_WRITE_TOKEN.",
+      },
+      { status: 400 },
+    );
+  }
+
+  const body = await req.json().catch(() => null);
+  if (!body || typeof body !== "object") {
+    return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
+  }
+  const { name, url } = body as Record<string, unknown>;
+  if (typeof name !== "string" || !name.trim()) {
+    return NextResponse.json(
+      { error: "name is required" },
+      { status: 400 },
+    );
+  }
+
+  try {
+    const result = await removeLinkViaAppsScript({
+      name,
+      url: typeof url === "string" ? url : undefined,
+    });
+    return NextResponse.json(result);
+  } catch (err) {
+    if (err instanceof LaunchpadWriteError) {
+      return NextResponse.json({ error: err.message }, { status: err.status });
+    }
+    return NextResponse.json(
+      { error: err instanceof Error ? err.message : "delete failed" },
       { status: 500 },
     );
   }

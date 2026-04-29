@@ -9,6 +9,7 @@ interface Props {
   editUrl?: string | null;
   canAdd?: boolean;
   onAdd?: () => void;
+  onRemove?: (resource: Resource) => void;
 }
 
 export function Launchpad({
@@ -17,8 +18,10 @@ export function Launchpad({
   editUrl,
   canAdd = false,
   onAdd,
+  onRemove,
 }: Props) {
   const sheetMode = mode === "sheet" || mode === "fallback";
+  const canRemove = canAdd && sheetMode && Boolean(onRemove);
 
   return (
     <section className="launchpad" id="launchpad">
@@ -42,21 +45,33 @@ export function Launchpad({
 
       <div className="cat-grid">
         {resources.map((r) => (
-          <a
-            key={r.id}
-            href={r.url}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="tile"
-          >
-            <div className="tile__icon">
-              <Icon name={r.icon} size={22} />
-            </div>
-            <div className="tile__name">{r.name}</div>
-            <div className="tile__ext">
-              <Icon name="external" size={13} />
-            </div>
-          </a>
+          <div className="tile-cell" key={r.id}>
+            <a
+              href={r.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="tile"
+            >
+              <div className="tile__icon">
+                <Icon name={r.icon} size={22} />
+              </div>
+              <div className="tile__name">{r.name}</div>
+              <div className="tile__ext">
+                <Icon name="external" size={13} />
+              </div>
+            </a>
+            {canRemove && (
+              <button
+                type="button"
+                className="tile__delete"
+                onClick={() => onRemove?.(r)}
+                aria-label={`Remove ${r.name}`}
+                title={`Remove ${r.name}`}
+              >
+                <Icon name="x" size={12} />
+              </button>
+            )}
+          </div>
         ))}
         {canAdd && onAdd && (
           <button

@@ -108,9 +108,9 @@ In your launchpad sheet → **Extensions → Apps Script**. Replace
 everything in `Code.gs` with:
 
 ```js
-// LAS Weekend Duty Dashboard — launchpad write-back.
+// LAS Duty Dashboard — launchpad write-back.
 //
-// Append rows to the launchpad sheet from the dashboard's Add button.
+// Add or remove rows in the launchpad sheet from the dashboard.
 // Deploy:  Deploy → New deployment → Type: Web app
 //          → Execute as: Me (sheet owner)
 //          → Who has access: Anyone
@@ -129,37 +129,78 @@ function doPost(e) {
       return _json({ error: 'unauthorized' });
     }
 
-    const name = String(body.name || '').trim();
-    const url = String(body.url || '').trim();
-    const icon = String(body.icon || 'link').trim();
-
-    if (!name || !url) return _json({ error: 'name and url required' });
-    if (!/^https?:\/\//.test(url)) {
-      return _json({ error: 'url must start with http(s)://' });
-    }
-
-    const sheet = SpreadsheetApp.getActive().getSheetByName(SHEET_NAME);
-    if (!sheet) return _json({ error: 'sheet tab not found: ' + SHEET_NAME });
-
-    const headers = sheet
-      .getRange(1, 1, 1, sheet.getLastColumn())
-      .getValues()[0]
-      .map(function (h) { return String(h).trim().toLowerCase(); });
-
-    const nextOrder = sheet.getLastRow(); // append at end
-    const row = headers.map(function (h) {
-      if (h === 'name') return name;
-      if (h === 'url') return url;
-      if (h === 'icon') return icon;
-      if (h === 'order') return nextOrder;
-      return '';
-    });
-    sheet.appendRow(row);
-
-    return _json({ ok: true, name: name, url: url, icon: icon });
+    const action = String(body.action || 'add').toLowerCase();
+    if (action === 'remove') return _remove(body);
+    return _add(body);
   } catch (err) {
     return _json({ error: String(err) });
   }
+}
+
+function _add(body) {
+  const name = String(body.name || '').trim();
+  const url = String(body.url || '').trim();
+  const icon = String(body.icon || 'link').trim();
+
+  if (!name || !url) return _json({ error: 'name and url required' });
+  if (!/^https?:\/\//.test(url)) {
+    return _json({ error: 'url must start with http(s)://' });
+  }
+
+  const sheet = SpreadsheetApp.getActive().getSheetByName(SHEET_NAME);
+  if (!sheet) return _json({ error: 'sheet tab not found: ' + SHEET_NAME });
+
+  const headers = sheet
+    .getRange(1, 1, 1, sheet.getLastColumn())
+    .getValues()[0]
+    .map(function (h) { return String(h).trim().toLowerCase(); });
+
+  const nextOrder = sheet.getLastRow(); // append at end
+  const row = headers.map(function (h) {
+    if (h === 'name') return name;
+    if (h === 'url') return url;
+    if (h === 'icon') return icon;
+    if (h === 'order') return nextOrder;
+    return '';
+  });
+  sheet.appendRow(row);
+
+  return _json({ ok: true, name: name, url: url, icon: icon });
+}
+
+function _remove(body) {
+  const name = String(body.name || '').trim();
+  const url = String(body.url || '').trim();
+  if (!name) return _json({ error: 'name is required' });
+
+  const sheet = SpreadsheetApp.getActive().getSheetByName(SHEET_NAME);
+  if (!sheet) return _json({ error: 'sheet tab not found: ' + SHEET_NAME });
+
+  const lastRow = sheet.getLastRow();
+  if (lastRow < 2) return _json({ error: 'no rows to remove' });
+
+  const headers = sheet
+    .getRange(1, 1, 1, sheet.getLastColumn())
+    .getValues()[0]
+    .map(function (h) { return String(h).trim().toLowerCase(); });
+  const nameCol = headers.indexOf('name');
+  const urlCol = headers.indexOf('url');
+  if (nameCol === -1) return _json({ error: 'sheet missing "name" column' });
+
+  const rows = sheet
+    .getRange(2, 1, lastRow - 1, sheet.getLastColumn())
+    .getValues();
+  for (let i = 0; i < rows.length; i++) {
+    const rowName = String(rows[i][nameCol] || '').trim();
+    if (rowName !== name) continue;
+    if (url && urlCol !== -1) {
+      const rowUrl = String(rows[i][urlCol] || '').trim();
+      if (rowUrl !== url) continue;
+    }
+    sheet.deleteRow(i + 2);
+    return _json({ ok: true, removed: { name: name, url: url } });
+  }
+  return _json({ error: 'tile not found: ' + name });
 }
 
 function doGet() {

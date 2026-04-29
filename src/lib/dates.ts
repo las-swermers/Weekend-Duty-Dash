@@ -40,6 +40,24 @@ export function fridayOfCurrentWeekend(now: Date = new Date()): WeekendRange {
   return { start, end };
 }
 
+// "Last night": previous evening 18:00 → today 06:00 (Europe/Zurich).
+// If called before 06:00, "last night" is yesterday-evening → this morning;
+// if called after 06:00, it's last-evening → this morning of the same day.
+export function lastNightRange(now: Date = new Date()): WeekendRange {
+  const local = new TZDate(now, TZ);
+  const todaySix = new TZDate(local, TZ);
+  todaySix.setHours(6, 0, 0, 0);
+
+  const end = new TZDate(todaySix, TZ);
+  if (local.getTime() < todaySix.getTime()) {
+    end.setDate(end.getDate());
+  }
+  const start = new TZDate(end, TZ);
+  start.setDate(end.getDate() - 1);
+  start.setHours(18, 0, 0, 0);
+  return { start, end };
+}
+
 // "May 1–3, 2026" style label for emails / headers.
 export function formatWeekendLabel(range: WeekendRange): string {
   const fmt = new Intl.DateTimeFormat("en-GB", {
