@@ -5,7 +5,7 @@ import { requireAnalyticsAccess } from "@/lib/analytics-auth";
 
 export const dynamic = "force-dynamic";
 export const metadata = {
-  title: "Analytics — LAS Weekend Dashboard",
+  title: "Analytics · LAS Duty Dashboard",
 };
 
 export default async function AnalyticsPage() {
