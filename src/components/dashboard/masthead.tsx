@@ -30,7 +30,7 @@ export function Masthead({
           Leysin American School · Weekend Duty
         </div>
         <h1 className="masthead__title">
-          Weekend <em>Duty</em> Dashboard
+          LAS <em>Duty</em> Dashboard
         </h1>
         <div className="masthead__sub">
           <span className="masthead__date">{weekendLabel}</span>
