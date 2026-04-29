@@ -7,9 +7,17 @@ interface Props {
   resources: Resource[];
   mode?: "kv" | "sheet" | "seed" | "fallback";
   editUrl?: string | null;
+  canAdd?: boolean;
+  onAdd?: () => void;
 }
 
-export function Launchpad({ resources, mode = "kv", editUrl }: Props) {
+export function Launchpad({
+  resources,
+  mode = "kv",
+  editUrl,
+  canAdd = false,
+  onAdd,
+}: Props) {
   const sheetMode = mode === "sheet" || mode === "fallback";
 
   return (
@@ -50,6 +58,16 @@ export function Launchpad({ resources, mode = "kv", editUrl }: Props) {
             </div>
           </a>
         ))}
+        {canAdd && onAdd && (
+          <button
+            type="button"
+            className="tile tile--add"
+            onClick={onAdd}
+          >
+            <Icon name="plus" size={18} />
+            <div className="tile__name">Add link</div>
+          </button>
+        )}
       </div>
     </section>
   );
