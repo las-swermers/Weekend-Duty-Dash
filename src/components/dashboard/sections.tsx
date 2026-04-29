@@ -49,11 +49,11 @@ export function HCSection({ data }: { data: HCStudent[] }) {
       num="01"
       title="Health"
       titleEm="Center"
-      sub="Residents observed Friday."
+      sub="Friday HC snapshot — total time per student."
       meta={`${data.length} STUDENTS`}
     >
       {data.length === 0 ? (
-        <EmptyState message="No students in HC right now." />
+        <EmptyState message="No HC visits recorded on Friday." />
       ) : (
         <div role="list">
           {data.map((s) => (
@@ -70,7 +70,7 @@ export function HCSection({ data }: { data: HCStudent[] }) {
                     </>
                   )}
                   <span className="sep" />
-                  <span>since {s.since}</span>
+                  <span>for {s.since}</span>
                 </div>
               </div>
               <div className="row__meta">
