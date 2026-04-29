@@ -55,6 +55,27 @@ const PROBES: Array<{ path: string; body: unknown }> = [
   { path: "/open-api/event-submission/list", body: {} },
   { path: "/open-api/submission/list", body: RECENT_RANGE_BODY },
 
+  // Activity Feed / Posts — Orah staff UI has /staff/activity-feed where
+  // duty staff write nightly "Duty Notes" posts. The public docs don't
+  // list a posts endpoint; these are the most likely RPC names.
+  { path: "/open-api/post/list", body: {} },
+  { path: "/open-api/post/list", body: RECENT_RANGE_BODY },
+  { path: "/open-api/post/timeline", body: RECENT_RANGE_BODY },
+  { path: "/open-api/posts/list", body: {} },
+  { path: "/open-api/feed/list", body: {} },
+  { path: "/open-api/feed/timeline", body: RECENT_RANGE_BODY },
+  { path: "/open-api/activity-feed/list", body: {} },
+  { path: "/open-api/activity-feed/timeline", body: RECENT_RANGE_BODY },
+  { path: "/open-api/announcement/list", body: {} },
+  { path: "/open-api/announcement/timeline", body: RECENT_RANGE_BODY },
+  { path: "/open-api/news/list", body: {} },
+  { path: "/open-api/communication/list", body: {} },
+  { path: "/open-api/communication/timeline", body: RECENT_RANGE_BODY },
+  { path: "/open-api/note/list", body: {} },
+  { path: "/open-api/note/timeline", body: RECENT_RANGE_BODY },
+  { path: "/open-api/notes/list", body: {} },
+  { path: "/open-api/template/list", body: {} },
+
   // Roll timeline filtered to trip-style types — proven to work, just
   // surfacing here for comparison.
   { path: "/open-api/roll/timeline", body: { query: { status: "All", date_range: { start_date: "2026-04-01T00:00:00.000Z" }, page_size: 5, page_index: 0 } } },
