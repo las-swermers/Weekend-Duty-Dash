@@ -61,6 +61,41 @@ export function PastoralCharts({
 
   return (
     <div className="charts-grid">
+      <ChartCard title="Categories compared" wide>
+        <ResponsiveContainer width="100%" height={Math.max(220, topCategories.length * 28)}>
+          <BarChart
+            data={topCategories}
+            layout="vertical"
+            margin={{ top: 4, right: 16, left: 16, bottom: 0 }}
+          >
+            <CartesianGrid strokeDasharray="2 4" stroke="#d8d2c5" horizontal={false} />
+            <XAxis
+              type="number"
+              allowDecimals={false}
+              stroke="#7a7468"
+              fontSize={11}
+              tickLine={false}
+            />
+            <YAxis
+              type="category"
+              dataKey="category"
+              stroke="#7a7468"
+              fontSize={11}
+              width={160}
+              tickLine={false}
+            />
+            <Tooltip
+              contentStyle={{
+                background: "#fbf8f1",
+                border: "1px solid #d8d2c5",
+                fontSize: 12,
+              }}
+            />
+            <Bar dataKey="count" fill={NAVY} radius={[0, 2, 2, 0]} />
+          </BarChart>
+        </ResponsiveContainer>
+      </ChartCard>
+
       <ChartCard title="Records per day" wide>
         <ResponsiveContainer width="100%" height={220}>
           <LineChart data={dayChartData} margin={{ top: 8, right: 16, left: -12, bottom: 0 }}>
@@ -93,41 +128,6 @@ export function PastoralCharts({
               activeDot={{ r: 5 }}
             />
           </LineChart>
-        </ResponsiveContainer>
-      </ChartCard>
-
-      <ChartCard title="Top categories">
-        <ResponsiveContainer width="100%" height={Math.max(200, topCategories.length * 28)}>
-          <BarChart
-            data={topCategories}
-            layout="vertical"
-            margin={{ top: 4, right: 16, left: 16, bottom: 0 }}
-          >
-            <CartesianGrid strokeDasharray="2 4" stroke="#d8d2c5" horizontal={false} />
-            <XAxis
-              type="number"
-              allowDecimals={false}
-              stroke="#7a7468"
-              fontSize={11}
-              tickLine={false}
-            />
-            <YAxis
-              type="category"
-              dataKey="category"
-              stroke="#7a7468"
-              fontSize={11}
-              width={140}
-              tickLine={false}
-            />
-            <Tooltip
-              contentStyle={{
-                background: "#fbf8f1",
-                border: "1px solid #d8d2c5",
-                fontSize: 12,
-              }}
-            />
-            <Bar dataKey="count" fill={NAVY} radius={[0, 2, 2, 0]} />
-          </BarChart>
         </ResponsiveContainer>
       </ChartCard>
 

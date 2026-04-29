@@ -7,11 +7,15 @@ import useSWR from "swr";
 import { Icon, LASCrest } from "@/components/dashboard/icon";
 import { EmptyState, SectionShell } from "@/components/dashboard/sections";
 import { Toast } from "@/components/dashboard/toast";
+import { PastoralCategoryGrid } from "@/components/shared/pastoral-category-grid";
 import { PastoralFeedSection } from "@/components/shared/pastoral-feed-section";
 import { signOutAction } from "@/lib/auth-actions";
 
 interface Props {
   userName: string | null;
+  todayCategories: string[];
+  todayStartISO: string;
+  todayEndISO: string;
 }
 
 const fetcher = async <T,>(url: string): Promise<T> => {
@@ -64,7 +68,12 @@ function formatDateTime(iso: string): string {
   }).format(new Date(iso));
 }
 
-export function LiveClient({ userName }: Props) {
+export function LiveClient({
+  userName,
+  todayCategories,
+  todayStartISO,
+  todayEndISO,
+}: Props) {
   const hc = useSWR<{ students: HCStudent[] }>(
     "/api/orah/health-center-live",
     fetcher,
@@ -121,7 +130,7 @@ export function LiveClient({ userName }: Props) {
           {userName ? (
             <span className="masthead__welcome">Welcome {userName}</span>
           ) : null}
-          <Link href="/" className="btn btn--ghost btn--sm">
+          <Link href="/weekend" className="btn btn--ghost btn--sm">
             <Icon name="folder" size={14} />
             Weekend Duty
           </Link>
@@ -188,25 +197,45 @@ export function LiveClient({ userName }: Props) {
         )}
       </SectionShell>
 
-      <PastoralFeedSection
-        id="live-discipline"
-        num="02"
-        title="Discipline"
-        titleEm="& Concerns"
-        sub="Phone violations and concern notes from the last 48 hours."
-        emptyMessage="No discipline entries in the last 48 hours."
-        categories={["Phone violation", "Concern"]}
-        days={2}
-      />
+      {todayCategories.length > 0 ? (
+        <PastoralCategoryGrid
+          id="live-today"
+          num="02"
+          title="Today's"
+          titleEm="Service"
+          sub="Infractions due to be served today, grouped by category."
+          emptyMessage="No service entries logged for today yet."
+          categories={todayCategories}
+          startISO={todayStartISO}
+          endISO={todayEndISO}
+        />
+      ) : (
+        <SectionShell
+          id="live-today"
+          num="02"
+          title="Today's"
+          titleEm="Service"
+          sub="Weekday — clipboards & dorm-night service resume Friday."
+          meta="0 ENTRIES"
+        >
+          <EmptyState message="No service due today." />
+        </SectionShell>
+      )}
 
       <PastoralFeedSection
-        id="live-early-checkins"
+        id="live-24h"
         num="03"
-        title="Tonight's"
-        titleEm="Early Check-ins"
-        sub="1-hour and 2-hour early check-ins logged in the last 24 hours."
-        emptyMessage="No early check-ins logged in the last 24 hours."
-        categories={["1-hour early check-in", "2-hour early check-in"]}
+        title="Last"
+        titleEm="24 Hours"
+        sub="Discipline, concerns, early check-ins, and uniform violations from the past day."
+        emptyMessage="Nothing logged in the last 24 hours."
+        categories={[
+          "Phone violation",
+          "Concern",
+          "1-hour early check-in",
+          "2-hour early check-in",
+          "Uniform violation",
+        ]}
         days={1}
       />
 
@@ -224,20 +253,9 @@ export function LiveClient({ userName }: Props) {
         days={7}
       />
 
-      <PastoralFeedSection
-        id="live-uniform"
-        num="05"
-        title="Uniform"
-        titleEm="Violations"
-        sub="Uniform violations logged in the past 7 days."
-        emptyMessage="No uniform violations logged in the past week."
-        categories={["Uniform violation"]}
-        days={7}
-      />
-
       <SectionShell
         id="live-dorm-notes"
-        num="06"
+        num="05"
         title="Last Night"
         titleEm="Dorm Notes"
         sub={

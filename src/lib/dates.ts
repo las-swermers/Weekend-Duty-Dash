@@ -58,6 +58,39 @@ export function lastNightRange(now: Date = new Date()): WeekendRange {
   return { start, end };
 }
 
+// True when the dashboard should default to the Weekend page rather than
+// Live. Window: Friday 18:00 → Monday 06:00 Europe/Zurich. Outside that,
+// "live" is more relevant. Used by the root redirect at `/`.
+export function isWeekendMode(now: Date = new Date()): boolean {
+  const local = new TZDate(now, TZ);
+  const day = local.getDay();
+  const hour = local.getHours();
+  if (day === 5 && hour >= 18) return true;
+  if (day === 6 || day === 0) return true;
+  if (day === 1 && hour < 6) return true;
+  return false;
+}
+
+// Today's local-day window: 00:00 → 23:59:59.999 Europe/Zurich.
+export function todayRange(now: Date = new Date()): WeekendRange {
+  const start = new TZDate(now, TZ);
+  start.setHours(0, 0, 0, 0);
+  const end = new TZDate(start, TZ);
+  end.setHours(23, 59, 59, 999);
+  return { start, end };
+}
+
+// Categories whose "service" is performed on the given weekday, used by
+// the Live page's "Today's Service" section. Orah pastoral records have
+// no due-date field, so we infer from category + the calendar day.
+export function serveCategoriesForToday(now: Date = new Date()): string[] {
+  const day = new TZDate(now, TZ).getDay();
+  if (day === 5) return ["Friday Night in the Dorm"];
+  if (day === 6) return ["Saturday Clipboard", "Saturday Night in the Dorm"];
+  if (day === 0) return ["Sunday Clipboard"];
+  return [];
+}
+
 // "May 1–3, 2026" style label for emails / headers.
 export function formatWeekendLabel(range: WeekendRange): string {
   const fmt = new Intl.DateTimeFormat("en-GB", {

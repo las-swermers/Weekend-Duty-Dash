@@ -12,7 +12,7 @@ import { AlertSummary } from "@/components/dashboard/alert-summary";
 import { Launchpad } from "@/components/dashboard/launchpad";
 import { Masthead } from "@/components/dashboard/masthead";
 import { HCSection, NoPaSection } from "@/components/dashboard/sections";
-import { PastoralFeedSection } from "@/components/shared/pastoral-feed-section";
+import { PastoralCategoryGrid } from "@/components/shared/pastoral-category-grid";
 import { Toast } from "@/components/dashboard/toast";
 import type { HCStudent, NoPaStudent } from "@/lib/mock";
 import type { Resource } from "@/types/resource";
@@ -21,6 +21,7 @@ interface Props {
   weekendLabel: string;
   aoc: string;
   userName: string | null;
+  weekendRange: { startISO: string; endISO: string };
   initial: {
     hc: HCStudent[];
     noPa: NoPaStudent[];
@@ -36,7 +37,13 @@ const fetcher = async <T,>(url: string): Promise<T> => {
   return res.json() as Promise<T>;
 };
 
-export function DashboardClient({ weekendLabel, aoc, userName, initial }: Props) {
+export function DashboardClient({
+  weekendLabel,
+  aoc,
+  userName,
+  weekendRange,
+  initial,
+}: Props) {
   const hc = useSWR<{ students: HCStudent[] }>(
     "/api/orah/health-center",
     fetcher,
@@ -170,12 +177,12 @@ export function DashboardClient({ weekendLabel, aoc, userName, initial }: Props)
         <NoPaSection data={noPa.data?.students ?? []} />
       </div>
 
-      <PastoralFeedSection
+      <PastoralCategoryGrid
         id="weekend-infractions"
         num="03"
         title="To Serve"
         titleEm="This Weekend"
-        sub="Clipboards, Friday Night in Dorm, and early check-ins logged in the past 14 days."
+        sub="Clipboards, dorm-night restrictions, and early check-ins for the upcoming weekend."
         emptyMessage="No infractions logged for this weekend yet."
         categories={[
           "Saturday Clipboard",
@@ -185,8 +192,9 @@ export function DashboardClient({ weekendLabel, aoc, userName, initial }: Props)
           "1-hour early check-in",
           "2-hour early check-in",
         ]}
-        days={14}
-        limit={100}
+        startISO={weekendRange.startISO}
+        endISO={weekendRange.endISO}
+        enableTickOff
       />
 
       <Launchpad
