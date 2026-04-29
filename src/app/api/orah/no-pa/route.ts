@@ -46,7 +46,7 @@ function formatUntil(iso: string | null | undefined): string {
 }
 
 function lookbackStartIso(): string {
-  const days = Number(process.env.NO_PA_LOOKBACK_DAYS) || 60;
+  const days = Number(process.env.NO_PA_LOOKBACK_DAYS) || 365;
   const start = new Date();
   start.setUTCDate(start.getUTCDate() - days);
   start.setUTCHours(0, 0, 0, 0);
@@ -76,7 +76,11 @@ export async function GET(req: NextRequest) {
     const startIso = lookbackStartIso();
 
     const [records, students, houses] = await Promise.all([
-      listPastoralTimeline(startIso, undefined, { revalidate: 60 }),
+      listPastoralTimeline(startIso, undefined, {
+        revalidate: 60,
+        pageSize: 200,
+        maxPages: 80,
+      }),
       listStudents(),
       listHouses(),
     ]);
@@ -164,8 +168,10 @@ export async function GET(req: NextRequest) {
       students: out,
       meta: {
         category: process.env.NO_PA_CATEGORY_NAME ?? "No Physical Activity",
-        lookbackDays: Number(process.env.NO_PA_LOOKBACK_DAYS) || 60,
+        lookbackDays: Number(process.env.NO_PA_LOOKBACK_DAYS) || 365,
         recordsScanned: records.length,
+        pageCap: 200 * 80,
+        hitCap: records.length >= 200 * 80,
       },
       ...(debug
         ? {
