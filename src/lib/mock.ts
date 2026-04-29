@@ -60,7 +60,7 @@ export const HC_STUDENTS: HCStudent[] = [
     initials: "M.B.",
     dorm: "Belle Époque",
     reason: "Migraine — overnight obs.",
-    since: "Thu 22:40",
+    since: "8h 30m",
     status: "overnight",
   },
   {
@@ -68,7 +68,7 @@ export const HC_STUDENTS: HCStudent[] = [
     initials: "L.K.",
     dorm: "Savoy",
     reason: "Sprained ankle, PT review",
-    since: "Fri 09:15",
+    since: "2h 15m",
     status: "in",
   },
   {
@@ -76,7 +76,7 @@ export const HC_STUDENTS: HCStudent[] = [
     initials: "T.A.",
     dorm: "Hadsom",
     reason: "Fever 38.4°",
-    since: "Fri 11:02",
+    since: "45m",
     status: "in",
   },
   {
@@ -84,7 +84,7 @@ export const HC_STUDENTS: HCStudent[] = [
     initials: "S.R.",
     dorm: "Fairmont",
     reason: "Post-procedure rest",
-    since: "Fri 13:30",
+    since: "1h",
     status: "in",
   },
 ];

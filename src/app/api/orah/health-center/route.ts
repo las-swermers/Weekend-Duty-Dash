@@ -1,8 +1,8 @@
-// Live: students who were signed into any Health Center / Nursery /
-// Infirmary location, OR signed onto a "rest in room" pass, at any
-// point during Friday of the current weekend (Europe/Zurich). Reads
-// location-record/timeline for the Friday window plus the live
-// get-current snapshot, merges, and dedupes by student.
+// Snapshot: students who spent time in a Health Center / Nursery /
+// Infirmary location, or on a "rest in room" pass, during Friday of
+// the current weekend (Europe/Zurich). Reads location-record/timeline
+// for the Friday window only, pairs "in"/"out" events per student, and
+// reports total minutes spent in HC on Friday.
 //
 // LAS has a per-dorm HC layout, so the location resolver returns an
 // array of ids. Rest-pass locations are matched either via
@@ -49,21 +49,13 @@ function parseIdList(env: string | undefined): number[] {
     .map(Number);
 }
 
-function describeRecord(rec: OrahLocationRecord): {
-  since: string;
-  status: "in" | "overnight";
-} {
-  const recordedAt = new Date(rec.record_time);
-  const ageMs = Date.now() - recordedAt.getTime();
-  const overnight = ageMs > 12 * 60 * 60 * 1000;
-  const since = new Intl.DateTimeFormat("en-GB", {
-    timeZone: "Europe/Zurich",
-    weekday: "short",
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  }).format(recordedAt);
-  return { since, status: overnight ? "overnight" : "in" };
+function formatDuration(ms: number): string {
+  const totalMin = Math.max(0, Math.round(ms / 60_000));
+  const h = Math.floor(totalMin / 60);
+  const m = totalMin % 60;
+  if (h === 0) return `${m}m`;
+  if (m === 0) return `${h}h`;
+  return `${h}h ${m}m`;
 }
 
 async function fetchTimeline(
@@ -151,11 +143,8 @@ export async function GET() {
       return false;
     };
 
-    const [timeline, currentResp, students, houses] = await Promise.all([
+    const [timeline, students, houses] = await Promise.all([
       fetchTimeline(startISO, endISO),
-      orahCall<OrahEnvelope<OrahLocationRecord[]>>(
-        "/open-api/location-record/get-current",
-      ),
       listStudents(),
       listHouses(),
     ]);
@@ -166,50 +155,68 @@ export async function GET() {
     const fridayMatches = timeline.filter((r) =>
       matchesHcLocation(r.location),
     );
-    const currentMatches = (currentResp.data ?? []).filter(
-      (r) => r.type === "in" && matchesHcLocation(r.location),
-    );
 
-    const earliestPerStudent = new Map<number, OrahLocationRecord>();
+    const fridayStartMs = friday.start.getTime();
+    const fridayEndMs = friday.end.getTime();
+
+    const recordsByStudent = new Map<number, OrahLocationRecord[]>();
     for (const r of fridayMatches) {
-      const existing = earliestPerStudent.get(r.student.id);
-      if (
-        !existing ||
-        new Date(r.record_time) < new Date(existing.record_time)
-      ) {
-        earliestPerStudent.set(r.student.id, r);
-      }
-    }
-    for (const r of currentMatches) {
-      if (!earliestPerStudent.has(r.student.id)) {
-        earliestPerStudent.set(r.student.id, r);
-      }
+      const arr = recordsByStudent.get(r.student.id);
+      if (arr) arr.push(r);
+      else recordsByStudent.set(r.student.id, [r]);
     }
 
-    const out: DashboardHCStudent[] = Array.from(
-      earliestPerStudent.values(),
-    ).map((r) => {
-      const student = studentMap.get(r.student.id);
+    const out: DashboardHCStudent[] = [];
+    for (const [studentId, records] of recordsByStudent) {
+      records.sort((a, b) => a.record_time.localeCompare(b.record_time));
+
+      let totalMs = 0;
+      let openInTime: number | null = null;
+      let stillIn = false;
+      let primary: OrahLocationRecord = records[0];
+      for (const r of records) {
+        if (r.type === "in") primary = r;
+      }
+
+      for (const r of records) {
+        const t = new Date(r.record_time).getTime();
+        if (r.type === "in") {
+          if (openInTime === null) openInTime = Math.max(t, fridayStartMs);
+        } else {
+          // out: close an open interval, or treat start of Friday as
+          // implicit in time if the student was already in HC overnight.
+          const startMs = openInTime ?? fridayStartMs;
+          totalMs += Math.max(0, Math.min(t, fridayEndMs) - startMs);
+          openInTime = null;
+        }
+      }
+      if (openInTime !== null) {
+        totalMs += Math.max(0, fridayEndMs - openInTime);
+        stillIn = true;
+      }
+
+      if (totalMs <= 0) continue;
+
+      const student = studentMap.get(studentId);
       const { full, initials } = studentDisplayName(student);
       const dorm = student?.house?.id
         ? houseMap.get(student.house.id) ?? "—"
         : "—";
-      const { since, status } = describeRecord(r);
-      const rest = isRestLocation(r.location);
-      return {
-        id: r.student.id,
+      const rest = isRestLocation(primary.location);
+      out.push({
+        id: studentId,
         name: full,
         initials,
         dorm,
         reason: rest
-          ? `Rest pass — ${r.location?.name ?? "in room"}`
-          : `In ${r.location?.name ?? "Health Center"}`,
-        since,
-        status,
-        location: r.location?.name ?? "Health Center",
-        locationId: r.location?.id ?? 0,
-      };
-    });
+          ? `Rest pass — ${primary.location?.name ?? "in room"}`
+          : `In ${primary.location?.name ?? "Health Center"}`,
+        since: formatDuration(totalMs),
+        status: stillIn ? "overnight" : "in",
+        location: primary.location?.name ?? "Health Center",
+        locationId: primary.location?.id ?? 0,
+      });
+    }
 
     out.sort((a, b) => a.name.localeCompare(b.name));
 
