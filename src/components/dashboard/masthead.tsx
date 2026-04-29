@@ -44,6 +44,10 @@ export function Masthead({
         {userName ? (
           <span className="masthead__welcome">Welcome {userName}</span>
         ) : null}
+        <Link href="/live" className="btn btn--ghost btn--sm">
+          <Icon name="folder" size={14} />
+          Live
+        </Link>
         <Link href="/analytics" className="btn btn--ghost btn--sm">
           <Icon name="folder" size={14} />
           Analytics

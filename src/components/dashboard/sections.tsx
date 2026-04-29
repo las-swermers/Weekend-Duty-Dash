@@ -38,7 +38,7 @@ export function SectionShell({
   );
 }
 
-function EmptyState({ message }: { message: string }) {
+export function EmptyState({ message }: { message: string }) {
   return <div className="section__empty">{message}</div>;
 }
 
