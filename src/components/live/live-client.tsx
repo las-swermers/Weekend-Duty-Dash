@@ -7,6 +7,7 @@ import useSWR from "swr";
 import { Icon, LASCrest } from "@/components/dashboard/icon";
 import { EmptyState, SectionShell } from "@/components/dashboard/sections";
 import { Toast } from "@/components/dashboard/toast";
+import { PastoralFeedSection } from "@/components/shared/pastoral-feed-section";
 import { signOutAction } from "@/lib/auth-actions";
 
 interface Props {
@@ -187,9 +188,56 @@ export function LiveClient({ userName }: Props) {
         )}
       </SectionShell>
 
+      <PastoralFeedSection
+        id="live-discipline"
+        num="02"
+        title="Discipline"
+        titleEm="& Concerns"
+        sub="Phone violations and concern notes from the last 48 hours."
+        emptyMessage="No discipline entries in the last 48 hours."
+        categories={["Phone violation", "Concern"]}
+        days={2}
+      />
+
+      <PastoralFeedSection
+        id="live-early-checkins"
+        num="03"
+        title="Tonight's"
+        titleEm="Early Check-ins"
+        sub="1-hour and 2-hour early check-ins logged in the last 24 hours."
+        emptyMessage="No early check-ins logged in the last 24 hours."
+        categories={["1-hour early check-in", "2-hour early check-in"]}
+        days={1}
+      />
+
+      <PastoralFeedSection
+        id="live-wednesday"
+        num="04"
+        title="Wednesday"
+        titleEm="Catch-up & Make-up"
+        sub="Wednesday morning catch-up and Wednesday make-up activity from the past week."
+        emptyMessage="No Wednesday catch-up or make-up activity logged."
+        categories={[
+          "Wednesday morning catch-up",
+          "Wednesday make-up activity",
+        ]}
+        days={7}
+      />
+
+      <PastoralFeedSection
+        id="live-uniform"
+        num="05"
+        title="Uniform"
+        titleEm="Violations"
+        sub="Uniform violations logged in the past 7 days."
+        emptyMessage="No uniform violations logged in the past week."
+        categories={["Uniform violation"]}
+        days={7}
+      />
+
       <SectionShell
         id="live-dorm-notes"
-        num="02"
+        num="06"
         title="Last Night"
         titleEm="Dorm Notes"
         sub={

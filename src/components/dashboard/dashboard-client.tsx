@@ -12,6 +12,7 @@ import { AlertSummary } from "@/components/dashboard/alert-summary";
 import { Launchpad } from "@/components/dashboard/launchpad";
 import { Masthead } from "@/components/dashboard/masthead";
 import { HCSection, NoPaSection } from "@/components/dashboard/sections";
+import { PastoralFeedSection } from "@/components/shared/pastoral-feed-section";
 import { Toast } from "@/components/dashboard/toast";
 import type { HCStudent, NoPaStudent } from "@/lib/mock";
 import type { Resource } from "@/types/resource";
@@ -168,6 +169,24 @@ export function DashboardClient({ weekendLabel, aoc, userName, initial }: Props)
         <HCSection data={hc.data?.students ?? []} />
         <NoPaSection data={noPa.data?.students ?? []} />
       </div>
+
+      <PastoralFeedSection
+        id="weekend-infractions"
+        num="03"
+        title="To Serve"
+        titleEm="This Weekend"
+        sub="Clipboards, Friday Night in Dorm, and early check-ins logged in the past 14 days."
+        emptyMessage="No infractions logged for this weekend yet."
+        categories={[
+          "Saturday Clipboard",
+          "Sunday Clipboard",
+          "Friday Night in the Dorm",
+          "1-hour early check-in",
+          "2-hour early check-in",
+        ]}
+        days={14}
+        limit={100}
+      />
 
       <Launchpad
         resources={resources.data?.resources ?? []}
