@@ -32,34 +32,6 @@ interface HCStudent {
   location: string;
 }
 
-interface OffCampusStudent {
-  id: number;
-  name: string;
-  initials: string;
-  dorm: string;
-  location: string;
-  state: "off_grounds" | "home";
-  since: string;
-}
-
-interface OffCampusResponse {
-  students: OffCampusStudent[];
-  counts: { offGrounds: number; home: number; total: number };
-}
-
-interface PastoralAlert {
-  id: number;
-  date: string;
-  studentName: string;
-  studentInitials: string;
-  dorm: string;
-  category: string;
-  description: string;
-  watchlist: boolean;
-  sensitive: boolean;
-  createdBy: string;
-}
-
 interface DormNote {
   id: number;
   date: string;
@@ -68,13 +40,6 @@ interface DormNote {
   dorm: string;
   description: string;
   createdBy: string;
-}
-
-interface LocationBucket {
-  locationId: number;
-  locationName: string;
-  count: number;
-  sampleStudents: string[];
 }
 
 const REFRESH_MS = 30_000;
@@ -99,26 +64,8 @@ function formatDateTime(iso: string): string {
 }
 
 export function LiveClient({ userName }: Props) {
-  const locations = useSWR<{
-    totalRecords: number;
-    uniqueLocations: number;
-    buckets: LocationBucket[];
-    pulledAt: string;
-  }>("/api/orah/current-locations", fetcher, {
-    refreshInterval: REFRESH_MS,
-  });
   const hc = useSWR<{ students: HCStudent[] }>(
     "/api/orah/health-center-live",
-    fetcher,
-    { refreshInterval: REFRESH_MS },
-  );
-  const offCampus = useSWR<OffCampusResponse>(
-    "/api/orah/off-campus",
-    fetcher,
-    { refreshInterval: REFRESH_MS },
-  );
-  const alerts = useSWR<{ alerts: PastoralAlert[] }>(
-    "/api/orah/pastoral-alerts",
     fetcher,
     { refreshInterval: REFRESH_MS },
   );
@@ -130,7 +77,9 @@ export function LiveClient({ userName }: Props) {
 
   const [toast, setToast] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
-  const [now, setNow] = useState<string>(() => formatTime(new Date().toISOString()));
+  const [now, setNow] = useState<string>(() =>
+    formatTime(new Date().toISOString()),
+  );
 
   useEffect(() => {
     const id = setInterval(
@@ -142,23 +91,12 @@ export function LiveClient({ userName }: Props) {
 
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
-    await Promise.all([
-      locations.mutate(),
-      hc.mutate(),
-      offCampus.mutate(),
-      alerts.mutate(),
-      dormNotes.mutate(),
-    ]);
+    await Promise.all([hc.mutate(), dormNotes.mutate()]);
     setRefreshing(false);
     setToast("Live data refreshed");
     window.setTimeout(() => setToast(null), 2000);
-  }, [locations, hc, offCampus, alerts, dormNotes]);
+  }, [hc, dormNotes]);
 
-  const totalOnRecord = locations.data?.totalRecords ?? 0;
-  const offCampusTotal = offCampus.data?.counts.total ?? 0;
-  const homeTotal = offCampus.data?.counts.home ?? 0;
-  const offGroundsTotal = offCampus.data?.counts.offGrounds ?? 0;
-  const onCampusTotal = Math.max(0, totalOnRecord - offCampusTotal);
   const hcCount = hc.data?.students.length ?? 0;
 
   return (
@@ -211,159 +149,36 @@ export function LiveClient({ userName }: Props) {
         </div>
       </header>
 
-      <section className="stat-grid">
-        <Stat label="Students on record" value={totalOnRecord} />
-        <Stat label="On campus" value={onCampusTotal} />
-        <Stat label="Off grounds" value={offGroundsTotal} />
-        <Stat label="At home" value={homeTotal} />
-        <Stat label="In Health Center" value={hcCount} />
-      </section>
-
-      <div className="sections">
-        <SectionShell
-          id="live-hc"
-          num="01"
-          title="Health"
-          titleEm="Center"
-          sub="Students currently checked in."
-          meta={`${hcCount} STUDENTS`}
-        >
-          {hcCount === 0 ? (
-            <EmptyState message="No students in HC right now." />
-          ) : (
-            <div role="list">
-              {(hc.data?.students ?? []).map((s) => (
-                <div className="row" key={s.id} role="listitem">
-                  <div className="row__initials">{s.initials}</div>
-                  <div className="row__main">
-                    <div className="row__line">{s.name}</div>
-                    <div className="row__sub">
-                      <span>{s.dorm}</span>
-                      <span className="sep" />
-                      <span>{s.location}</span>
-                      <span className="sep" />
-                      <span>since {s.since}</span>
-                    </div>
-                  </div>
-                  <div className="row__meta">
-                    {s.status === "overnight" ? (
-                      <span className="tag tag--overnight">Overnight</span>
-                    ) : (
-                      <span className="tag tag--in">In</span>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </SectionShell>
-
-        <SectionShell
-          id="live-off-campus"
-          num="02"
-          title="Off"
-          titleEm="Campus"
-          sub="Off-grounds and at-home right now."
-          meta={`${offCampusTotal} STUDENTS`}
-        >
-          {offCampusTotal === 0 ? (
-            <EmptyState message="No students currently off campus." />
-          ) : (
-            <div role="list">
-              {(offCampus.data?.students ?? []).slice(0, 30).map((s) => (
-                <div className="row" key={s.id} role="listitem">
-                  <div className="row__initials">{s.initials}</div>
-                  <div className="row__main">
-                    <div className="row__line">{s.name}</div>
-                    <div className="row__sub">
-                      <span>{s.dorm}</span>
-                      <span className="sep" />
-                      <span>{s.location}</span>
-                      <span className="sep" />
-                      <span>since {s.since}</span>
-                    </div>
-                  </div>
-                  <div className="row__meta">
-                    <span
-                      className={
-                        s.state === "home"
-                          ? "tag tag--in"
-                          : "tag tag--overnight"
-                      }
-                    >
-                      {s.state === "home" ? "Home" : "Off-grounds"}
-                    </span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </SectionShell>
-      </div>
-
       <SectionShell
-        id="live-locations"
-        num="03"
-        title="Where"
-        titleEm="Students Are"
-        sub="Counts by location, busiest first."
-        meta={`${locations.data?.uniqueLocations ?? 0} LOCATIONS`}
+        id="live-hc"
+        num="01"
+        title="Health"
+        titleEm="Center"
+        sub="Students currently checked in."
+        meta={`${hcCount} STUDENTS`}
       >
-        {(locations.data?.buckets.length ?? 0) === 0 ? (
-          <EmptyState message="No live location data." />
-        ) : (
-          <div className="loc-grid">
-            {(locations.data?.buckets ?? []).slice(0, 16).map((b) => (
-              <div className="loc-card" key={b.locationId}>
-                <div className="loc-card__count">{b.count}</div>
-                <div className="loc-card__name">{b.locationName}</div>
-                {b.sampleStudents.length > 0 && (
-                  <div className="loc-card__sample">
-                    {b.sampleStudents.slice(0, 2).join(" · ")}
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
-        )}
-      </SectionShell>
-
-      <SectionShell
-        id="live-alerts"
-        num="04"
-        title="Pastoral"
-        titleEm="Alerts"
-        sub="Watchlist or sensitive entries from the last 48 hours."
-        meta={`${alerts.data?.alerts.length ?? 0} ENTRIES`}
-      >
-        {(alerts.data?.alerts.length ?? 0) === 0 ? (
-          <EmptyState message="No flagged pastoral entries in the last 48 hours." />
+        {hcCount === 0 ? (
+          <EmptyState message="No students in HC right now." />
         ) : (
           <div role="list">
-            {(alerts.data?.alerts ?? []).map((a) => (
-              <div className="row" key={a.id} role="listitem">
-                <div className="row__initials">{a.studentInitials}</div>
+            {(hc.data?.students ?? []).map((s) => (
+              <div className="row" key={s.id} role="listitem">
+                <div className="row__initials">{s.initials}</div>
                 <div className="row__main">
-                  <div className="row__line">
-                    {a.studentName} — {a.category}
-                  </div>
+                  <div className="row__line">{s.name}</div>
                   <div className="row__sub">
-                    <span>{a.dorm}</span>
+                    <span>{s.dorm}</span>
                     <span className="sep" />
-                    <span>{formatDateTime(a.date)}</span>
+                    <span>{s.location}</span>
                     <span className="sep" />
-                    <span>by {a.createdBy}</span>
+                    <span>since {s.since}</span>
                   </div>
-                  {a.description && (
-                    <div className="row__note">{a.description}</div>
-                  )}
                 </div>
                 <div className="row__meta">
-                  {a.watchlist && (
-                    <span className="tag tag--watchlist">Watchlist</span>
-                  )}
-                  {a.sensitive && (
-                    <span className="tag tag--sensitive">Sensitive</span>
+                  {s.status === "overnight" ? (
+                    <span className="tag tag--overnight">Overnight</span>
+                  ) : (
+                    <span className="tag tag--in">In</span>
                   )}
                 </div>
               </div>
@@ -374,7 +189,7 @@ export function LiveClient({ userName }: Props) {
 
       <SectionShell
         id="live-dorm-notes"
-        num="05"
+        num="02"
         title="Last Night"
         titleEm="Dorm Notes"
         sub={
@@ -414,20 +229,13 @@ export function LiveClient({ userName }: Props) {
 
       <footer className="colophon">
         <div>LAS · 1854 Leysin · Internal tool</div>
-        <div className="colophon__center">Live snapshot · refreshes every 30s</div>
+        <div className="colophon__center">
+          Live snapshot · refreshes every 30s
+        </div>
         <div>v0.1 · Live · {new Date().getFullYear()}</div>
       </footer>
 
       <Toast message={toast} />
-    </div>
-  );
-}
-
-function Stat({ label, value }: { label: string; value: number }) {
-  return (
-    <div className="stat">
-      <div className="stat__value">{value}</div>
-      <div className="stat__label">{label}</div>
     </div>
   );
 }
