@@ -9,12 +9,40 @@ import { Icon, LASCrest } from "@/components/dashboard/icon";
 import { Toast } from "@/components/dashboard/toast";
 import type { PastoralEntry } from "@/components/shared/pastoral-row";
 import { signOutAction } from "@/lib/auth-actions";
+import type { CalendarEvent } from "@/lib/google-calendar";
 
 interface Props {
   userName: string | null;
   todayCategories: string[];
   weekendCategories: string[];
 }
+
+interface DormNote {
+  id: number;
+  date: string;
+  studentName: string;
+  studentInitials: string;
+  dorm: string;
+  description: string;
+  createdBy: string;
+}
+
+interface DormNotesResponse {
+  notes: DormNote[];
+  configured: boolean;
+  categoryName?: string;
+}
+
+interface ActivitiesResponse {
+  events: CalendarEvent[];
+  configured: boolean;
+  error?: string;
+}
+
+type DrawerState =
+  | { kind: "hc"; item: HCStudent }
+  | { kind: "infraction"; item: PastoralEntry }
+  | null;
 
 interface HCStudent {
   id: number;
@@ -86,6 +114,27 @@ function formatDate(iso: string): string {
     weekday: "short",
     day: "numeric",
     month: "short",
+  }).format(new Date(iso));
+}
+
+function formatDateTime(iso: string): string {
+  return new Intl.DateTimeFormat("en-GB", {
+    timeZone: TZ,
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).format(new Date(iso));
+}
+
+function dayKey(iso: string): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: TZ,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
   }).format(new Date(iso));
 }
 
@@ -207,6 +256,38 @@ function TopBar({
   );
 }
 
+// ─── Last-night dorm-notes strip ─────────────────────────────────
+
+function LastNightStrip({ data }: { data?: DormNotesResponse }) {
+  if (!data?.configured) return null;
+  const notes = data.notes ?? [];
+  if (notes.length === 0) return null;
+  return (
+    <div className="cr-lastnight">
+      <div className="cr-lastnight__label">
+        <span className="cr-lastnight__dot" />
+        Last <em>night</em>
+        <span className="cr-lastnight__count">{notes.length} notes</span>
+      </div>
+      <div className="cr-lastnight__items">
+        {notes.map((n) => (
+          <div className="cr-lastnight__item" key={n.id}>
+            <strong>{n.studentName}</strong>
+            <span className="cr-lastnight__sep">·</span>
+            <span className="cr-lastnight__dorm">{n.dorm}</span>
+            {n.description && (
+              <>
+                <span className="cr-lastnight__sep">·</span>
+                <span className="cr-lastnight__note">{n.description}</span>
+              </>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // ─── Stats strip ─────────────────────────────────────────────────
 
 function StatsStrip({
@@ -306,7 +387,13 @@ function hcTagInfo(s: HCStudent): { label: string; cls: "in" | "out" | "rest" | 
   return { label: "In HC", cls: "in" };
 }
 
-function HCCard({ s }: { s: HCStudent }) {
+function HCCard({
+  s,
+  onClick,
+}: {
+  s: HCStudent;
+  onClick: (s: HCStudent) => void;
+}) {
   const tag = hcTagInfo(s);
   const detail =
     s.isRestInRoom && s.roomNumber ? `Rest · Rm ${s.roomNumber}` : s.reason;
@@ -315,6 +402,7 @@ function HCCard({ s }: { s: HCStudent }) {
       type="button"
       className={`cr-card cr-card--${tag.cls}`}
       title={`${s.name} · ${s.dorm}`}
+      onClick={() => onClick(s)}
     >
       <div
         className="cr-card__photo"
@@ -338,7 +426,13 @@ function HCCard({ s }: { s: HCStudent }) {
   );
 }
 
-function HCTab({ students }: { students: HCStudent[] }) {
+function HCTab({
+  students,
+  onCardClick,
+}: {
+  students: HCStudent[];
+  onCardClick: (s: HCStudent) => void;
+}) {
   const grouped = useMemo(() => {
     const m = new Map<string, HCStudent[]>();
     for (const s of students) {
@@ -379,7 +473,7 @@ function HCTab({ students }: { students: HCStudent[] }) {
             </div>
             <div className="cr-grid">
               {list.map((s) => (
-                <HCCard key={s.id} s={s} />
+                <HCCard key={s.id} s={s} onClick={onCardClick} />
               ))}
             </div>
           </div>
@@ -391,12 +485,19 @@ function HCTab({ students }: { students: HCStudent[] }) {
 
 // ─── Infractions tab (category-grouped, dorm-chip filtered) ──────
 
-function ServeCard({ entry }: { entry: PastoralEntry }) {
+function ServeCard({
+  entry,
+  onClick,
+}: {
+  entry: PastoralEntry;
+  onClick: (e: PastoralEntry) => void;
+}) {
   return (
     <button
       type="button"
       className="cr-serve-card"
       title={`${entry.studentName} · ${entry.category}`}
+      onClick={() => onClick(entry)}
     >
       <div
         className="cr-serve-card__photo"
@@ -457,10 +558,12 @@ function InfractionsTab({
   records,
   categories,
   emptyMessage,
+  onCardClick,
 }: {
   records: PastoralEntry[];
   categories: string[];
   emptyMessage: string;
+  onCardClick: (e: PastoralEntry) => void;
 }) {
   const grouped = useMemo(() => {
     const m = new Map<string, PastoralEntry[]>();
@@ -497,7 +600,7 @@ function InfractionsTab({
             </div>
             <div className="cr-serve__group-body">
               {list.map((e) => (
-                <ServeCard key={e.id} entry={e} />
+                <ServeCard key={e.id} entry={e} onClick={onCardClick} />
               ))}
             </div>
           </div>
@@ -531,6 +634,175 @@ function filterInfractions(
   return out;
 }
 
+// ─── Activities tab ──────────────────────────────────────────────
+
+function ActivitiesTab({
+  events,
+  configured,
+  error,
+}: {
+  events: CalendarEvent[];
+  configured: boolean;
+  error?: string;
+}) {
+  const groups = useMemo(() => {
+    const m = new Map<string, CalendarEvent[]>();
+    for (const e of events) {
+      const k = dayKey(e.start);
+      if (!m.has(k)) m.set(k, []);
+      m.get(k)!.push(e);
+    }
+    return m;
+  }, [events]);
+
+  const dayKeys = useMemo(
+    () => Array.from(groups.keys()).sort(),
+    [groups],
+  );
+
+  if (!configured) {
+    return (
+      <div className="cr-empty">
+        Calendar not configured. Set GOOGLE_CALENDAR_ID and share with the
+        service account.
+      </div>
+    );
+  }
+  if (error) return <div className="cr-empty">Calendar error: {error}</div>;
+  if (events.length === 0) {
+    return <div className="cr-empty">No events scheduled.</div>;
+  }
+
+  return (
+    <>
+      {dayKeys.map((k) => {
+        const list = groups.get(k) ?? [];
+        return (
+          <div key={k} className="cr-cal-day">
+            <div className="cr-cal-day__head">
+              {formatDate(list[0]!.start)}
+            </div>
+            {list.map((e) => (
+              <div key={e.id} className="cr-cal-row">
+                <div className="cr-cal-row__time">
+                  {e.allDay
+                    ? "All day"
+                    : `${formatTime(e.start)}–${formatTime(e.end)}`}
+                </div>
+                <div>
+                  <div className="cr-cal-row__title">{e.summary}</div>
+                  {(e.location || e.description) && (
+                    <div className="cr-cal-row__sub">
+                      {e.location && <span>{e.location}</span>}
+                      {e.location && e.description && " · "}
+                      {e.description && <span>{e.description}</span>}
+                    </div>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        );
+      })}
+    </>
+  );
+}
+
+// ─── Detail drawer ───────────────────────────────────────────────
+
+function Drawer({
+  state,
+  onClose,
+}: {
+  state: DrawerState;
+  onClose: () => void;
+}) {
+  if (!state) return null;
+
+  let initials: string;
+  let name: string;
+  let metaLine: string;
+  let fields: Array<[string, string]>;
+  let hueSeed: string;
+
+  if (state.kind === "hc") {
+    const s = state.item;
+    initials = s.initials;
+    name = s.name;
+    hueSeed = s.name;
+    metaLine = `${s.dorm}${s.roomNumber ? ` · Rm ${s.roomNumber}` : ""}`;
+    const tag = hcTagInfo(s);
+    fields = [
+      ["Dorm", s.dorm || "—"],
+      ["Room", s.roomNumber ?? "—"],
+      ["Location", s.location || "—"],
+      ["Reason", s.reason || "—"],
+      ["Checked in", formatCheckIn(s.checkInISO)],
+      ["Duration", formatDuration(s.durationMinutes)],
+      ["Status", tag.label],
+    ];
+  } else {
+    const e = state.item;
+    initials = e.studentInitials;
+    name = e.studentName;
+    hueSeed = e.studentName;
+    metaLine = `${e.category} · ${e.dorm}`;
+    fields = [
+      ["Category", e.category],
+      ["Dorm", e.dorm || "—"],
+      ["Date", formatDateTime(e.date)],
+      ["Description", e.description || "—"],
+      ["Created by", e.createdBy || "—"],
+    ];
+  }
+
+  return (
+    <>
+      <div className="cr-drawer-backdrop" onClick={onClose} />
+      <aside className="cr-drawer" role="dialog" aria-label={name}>
+        <div className="cr-drawer__head">
+          <div
+            className="cr-drawer__photo"
+            style={{ background: photoGradient(hueSeed) }}
+            aria-hidden
+          >
+            {initials}
+          </div>
+          <div>
+            <h2 className="cr-drawer__name">{name}</h2>
+            <div className="cr-drawer__meta">{metaLine}</div>
+          </div>
+          <button
+            type="button"
+            className="cr-drawer__close"
+            onClick={onClose}
+            aria-label="Close detail"
+          >
+            <Icon name="x" size={16} />
+          </button>
+        </div>
+        <div className="cr-drawer__body">
+          {fields.map(([k, v]) => (
+            <div key={k} className="cr-drawer__field">
+              <div className="cr-drawer__field-label">{k}</div>
+              <div className="cr-drawer__field-value">{v}</div>
+            </div>
+          ))}
+        </div>
+        <div className="cr-drawer__actions">
+          <button
+            type="button"
+            className="btn btn--ghost btn--sm"
+            onClick={onClose}
+          >
+            Close
+          </button>
+        </div>
+      </aside>
+    </>
+  );
+}
+
 // ─── Main component ──────────────────────────────────────────────
 
 export function LiveClient(props: Props) {
@@ -538,6 +810,7 @@ export function LiveClient(props: Props) {
   const [query, setQuery] = useState("");
   const [todayDorm, setTodayDorm] = useState("all");
   const [weekendDorm, setWeekendDorm] = useState("all");
+  const [drawer, setDrawer] = useState<DrawerState>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [now, setNow] = useState<string>(() =>
@@ -580,6 +853,18 @@ export function LiveClient(props: Props) {
     { refreshInterval: REFRESH_MS },
   );
 
+  const dormNotes = useSWR<DormNotesResponse>(
+    "/api/orah/dorm-notes",
+    fetcher,
+    { refreshInterval: REFRESH_MS },
+  );
+
+  const activities = useSWR<ActivitiesResponse>(
+    "/api/calendar/events?days=3",
+    fetcher,
+    { refreshInterval: 5 * 60_000 },
+  );
+
   useEffect(() => {
     const id = setInterval(
       () => setNow(formatTime(new Date().toISOString())),
@@ -599,11 +884,13 @@ export function LiveClient(props: Props) {
       hc.mutate(),
       todayInfractions.mutate(),
       weekendInfractions.mutate(),
+      dormNotes.mutate(),
+      activities.mutate(),
     ]);
     setRefreshing(false);
     setToast("Refreshed");
     window.setTimeout(() => setToast(null), 2000);
-  }, [hc, todayInfractions, weekendInfractions]);
+  }, [hc, todayInfractions, weekendInfractions, dormNotes, activities]);
 
   const allStudents = hc.data?.students ?? [];
   const hcInNow = allStudents.filter((s) => s.status === "in").length;
@@ -635,11 +922,22 @@ export function LiveClient(props: Props) {
     [weekendRecords, query, weekendDorm],
   );
 
+  const events = activities.data?.events ?? [];
+  const filteredEvents = useMemo(() => {
+    if (active !== "activities" || !query.trim()) return events;
+    const q = query.toLowerCase();
+    return events.filter((e) =>
+      [e.summary, e.location, e.description]
+        .filter(Boolean)
+        .some((v) => String(v).toLowerCase().includes(q)),
+    );
+  }, [active, events, query]);
+
   const counts: Record<TabKey, number> = {
     hc: hcInNow,
     today: todayRecords.length,
     weekend: weekendRecords.length,
-    activities: 0, // wired in chunk 4
+    activities: events.length,
   };
 
   const rosterCount =
@@ -649,7 +947,9 @@ export function LiveClient(props: Props) {
         ? todayFiltered.length
         : active === "weekend"
           ? weekendFiltered.length
-          : 0;
+          : active === "activities"
+            ? filteredEvents.length
+            : 0;
 
   return (
     <div className="cr" data-density="balanced">
@@ -659,6 +959,7 @@ export function LiveClient(props: Props) {
         onRefresh={handleRefresh}
         asOf={now}
       />
+      <LastNightStrip data={dormNotes.data} />
       <StatsStrip active={active} onSelect={setActive} counts={counts} />
       <div className="cr-main">
         <RosterShell
@@ -686,7 +987,10 @@ export function LiveClient(props: Props) {
             !hc.data ? (
               <div className="cr-empty">Loading…</div>
             ) : (
-              <HCTab students={filteredStudents} />
+              <HCTab
+                students={filteredStudents}
+                onCardClick={(s) => setDrawer({ kind: "hc", item: s })}
+              />
             )
           ) : active === "today" ? (
             !todayInfractions.data ? (
@@ -698,6 +1002,7 @@ export function LiveClient(props: Props) {
                 records={todayFiltered}
                 categories={props.todayCategories}
                 emptyMessage="No outstanding infractions to serve today."
+                onCardClick={(e) => setDrawer({ kind: "infraction", item: e })}
               />
             )
           ) : active === "weekend" ? (
@@ -710,16 +1015,22 @@ export function LiveClient(props: Props) {
                 records={weekendFiltered}
                 categories={props.weekendCategories}
                 emptyMessage="No outstanding weekend infractions."
+                onCardClick={(e) => setDrawer({ kind: "infraction", item: e })}
               />
             )
+          ) : !activities.data ? (
+            <div className="cr-empty">Loading…</div>
           ) : (
-            <div className="cr-empty">
-              Coming next — wiring in the next chunk.
-            </div>
+            <ActivitiesTab
+              events={filteredEvents}
+              configured={activities.data.configured}
+              error={activities.data.error}
+            />
           )}
         </RosterShell>
       </div>
 
+      <Drawer state={drawer} onClose={() => setDrawer(null)} />
       <Toast message={toast} />
     </div>
   );
