@@ -2096,6 +2096,36 @@ details[open] > .analytics-filters__summary::before { content: "▾ "; }
   text-transform: uppercase;
 }
 
+/* Tick-off (served) state */
+.cr-serve-card--has-check {
+  grid-template-columns: 22px 36px 1fr;
+}
+.cr-serve-card__check {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.cr-serve-card__check input {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--moss);
+  cursor: pointer;
+}
+.cr-serve-card--served { background: var(--paper-2); }
+.cr-serve-card--served .cr-serve-card__name {
+  color: var(--ink-3);
+  text-decoration: line-through;
+  text-decoration-color: var(--ink-4);
+}
+.cr-serve-card__served-meta {
+  font-family: var(--mono);
+  font-size: 9.5px;
+  letter-spacing: 0.1em;
+  color: var(--moss);
+  margin-top: 2px;
+  text-transform: uppercase;
+}
+
 /* ── Activities list inside roster ───────────────────────────────── */
 
 .cr-cal-day { margin-bottom: 12px; }

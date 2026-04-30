@@ -13,8 +13,12 @@ import {
 import { Icon, LASCrest } from "@/components/dashboard/icon";
 import { Launchpad } from "@/components/dashboard/launchpad";
 import { Toast } from "@/components/dashboard/toast";
-import type { PastoralEntry } from "@/components/shared/pastoral-row";
+import type {
+  PastoralEntry,
+  ServedEntry,
+} from "@/components/shared/pastoral-row";
 import { signOutAction } from "@/lib/auth-actions";
+import type { CalendarEvent } from "@/lib/google-calendar";
 import type { HCStudent, NoPaStudent } from "@/lib/mock";
 import type { Resource } from "@/types/resource";
 
@@ -512,25 +516,56 @@ const WEEKEND_INFRACTION_CATEGORIES = [
 function ServeCard({
   entry,
   onClick,
+  served,
+  onToggleServed,
 }: {
   entry: PastoralEntry;
   onClick: (e: PastoralEntry) => void;
+  served?: ServedEntry;
+  onToggleServed?: (entry: PastoralEntry, currentlyServed: boolean) => void;
 }) {
+  const isServed = Boolean(served);
+  const showCheck = Boolean(onToggleServed);
   return (
-    <button
-      type="button"
-      className="cr-serve-card"
-      title={`${entry.studentName} · ${entry.category}`}
-      onClick={() => onClick(entry)}
+    <div
+      className={`cr-serve-card${showCheck ? " cr-serve-card--has-check" : ""}${isServed ? " cr-serve-card--served" : ""}`}
     >
-      <div
+      {showCheck && (
+        <label
+          className="cr-serve-card__check"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <input
+            type="checkbox"
+            checked={isServed}
+            onChange={() => onToggleServed?.(entry, isServed)}
+            aria-label={`Mark ${entry.studentName} as ${isServed ? "not served" : "served"}`}
+          />
+        </label>
+      )}
+      <button
+        type="button"
         className="cr-serve-card__photo"
         style={{ background: photoGradient(entry.studentName) }}
-        aria-hidden
+        aria-label={`Open details for ${entry.studentName}`}
+        onClick={() => onClick(entry)}
       >
         {entry.studentInitials}
-      </div>
-      <div className="cr-serve-card__body">
+      </button>
+      <button
+        type="button"
+        className="cr-serve-card__body"
+        onClick={() => onClick(entry)}
+        style={{
+          background: "transparent",
+          border: "none",
+          padding: 0,
+          textAlign: "left",
+          font: "inherit",
+          color: "inherit",
+          cursor: "pointer",
+        }}
+      >
         <div className="cr-serve-card__name">{entry.studentName}</div>
         <div className="cr-serve-card__sub">
           {entry.dorm} · {formatDate(entry.date)}
@@ -539,8 +574,13 @@ function ServeCard({
           <div className="cr-serve-card__desc">{entry.description}</div>
         )}
         <div className="cr-serve-card__by">By {entry.createdBy}</div>
-      </div>
-    </button>
+        {isServed && served && (
+          <div className="cr-serve-card__served-meta">
+            ✓ Served by {served.servedBy.split("@")[0]}
+          </div>
+        )}
+      </button>
+    </div>
   );
 }
 
@@ -613,11 +653,15 @@ function InfractionsTab({
   categories,
   emptyMessage,
   onCardClick,
+  servedMap,
+  onToggleServed,
 }: {
   records: PastoralEntry[];
   categories: string[];
   emptyMessage: string;
   onCardClick: (e: PastoralEntry) => void;
+  servedMap?: Map<number, ServedEntry>;
+  onToggleServed?: (entry: PastoralEntry, currentlyServed: boolean) => void;
 }) {
   const grouped = useMemo(() => {
     const m = new Map<string, PastoralEntry[]>();
@@ -653,13 +697,97 @@ function InfractionsTab({
             </div>
             <div className="cr-serve__group-body">
               {list.map((e) => (
-                <ServeCard key={e.id} entry={e} onClick={onCardClick} />
+                <ServeCard
+                  key={e.id}
+                  entry={e}
+                  onClick={onCardClick}
+                  served={servedMap?.get(e.id)}
+                  onToggleServed={onToggleServed}
+                />
               ))}
             </div>
           </div>
         );
       })}
     </div>
+  );
+}
+
+// ─── Activities tab ──────────────────────────────────────────────
+
+function dayKey(iso: string): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: TZ,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date(iso));
+}
+
+function ActivitiesTab({
+  events,
+  configured,
+  error,
+}: {
+  events: CalendarEvent[];
+  configured: boolean;
+  error?: string;
+}) {
+  const groups = useMemo(() => {
+    const m = new Map<string, CalendarEvent[]>();
+    for (const e of events) {
+      const k = dayKey(e.start);
+      if (!m.has(k)) m.set(k, []);
+      m.get(k)!.push(e);
+    }
+    return m;
+  }, [events]);
+
+  const dayKeys = useMemo(() => Array.from(groups.keys()).sort(), [groups]);
+
+  if (!configured) {
+    return (
+      <div className="cr-empty">
+        Calendar not configured. Set GOOGLE_CALENDAR_ID and share with the
+        service account.
+      </div>
+    );
+  }
+  if (error) return <div className="cr-empty">Calendar error: {error}</div>;
+  if (events.length === 0) {
+    return <div className="cr-empty">No events scheduled this weekend.</div>;
+  }
+
+  return (
+    <>
+      {dayKeys.map((k) => {
+        const list = groups.get(k) ?? [];
+        return (
+          <div key={k} className="cr-cal-day">
+            <div className="cr-cal-day__head">{formatDate(list[0]!.start)}</div>
+            {list.map((e) => (
+              <div key={e.id} className="cr-cal-row">
+                <div className="cr-cal-row__time">
+                  {e.allDay
+                    ? "All day"
+                    : `${formatTime(e.start)}–${formatTime(e.end)}`}
+                </div>
+                <div>
+                  <div className="cr-cal-row__title">{e.summary}</div>
+                  {(e.location || e.description) && (
+                    <div className="cr-cal-row__sub">
+                      {e.location && <span>{e.location}</span>}
+                      {e.location && e.description && " · "}
+                      {e.description && <span>{e.description}</span>}
+                    </div>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        );
+      })}
+    </>
   );
 }
 
@@ -782,8 +910,6 @@ export function DashboardClient({
   weekendRange,
   initial,
 }: Props) {
-  // weekendRange will be wired into the Activities tab in W3.
-  void weekendRange;
   const [active, setActive] = useState<TabKey>("byDorm");
   const [query, setQuery] = useState("");
   const [weekendDorm, setWeekendDorm] = useState("all");
@@ -817,6 +943,27 @@ export function DashboardClient({
     fetcher,
     { refreshInterval: REFRESH_MS },
   );
+
+  const tickBucket = weekendRange.startISO;
+  const servedSwr = useSWR<{ served: ServedEntry[] }>(
+    `/api/clipboard?weekend=${encodeURIComponent(tickBucket)}`,
+    fetcher,
+    { refreshInterval: REFRESH_MS },
+  );
+
+  const activitiesUrl = useMemo(() => {
+    const params = new URLSearchParams({
+      start: weekendRange.startISO,
+      end: weekendRange.endISO,
+    });
+    return `/api/calendar/events?${params.toString()}`;
+  }, [weekendRange.startISO, weekendRange.endISO]);
+  const activities = useSWR<{
+    events: CalendarEvent[];
+    configured: boolean;
+    error?: string;
+  }>(activitiesUrl, fetcher, { refreshInterval: 5 * 60_000 });
+
   const resources = useSWR<{
     resources: Resource[];
     mode?: "kv" | "sheet" | "seed" | "fallback";
@@ -850,12 +997,68 @@ export function DashboardClient({
       hc.mutate(),
       noPa.mutate(),
       weekendInfractions.mutate(),
+      servedSwr.mutate(),
+      activities.mutate(),
       resources.mutate(),
     ]);
     setLastUpdated("just now");
     setRefreshing(false);
     showToast("Dashboard refreshed");
-  }, [hc, noPa, weekendInfractions, resources, showToast]);
+  }, [
+    hc,
+    noPa,
+    weekendInfractions,
+    servedSwr,
+    activities,
+    resources,
+    showToast,
+  ]);
+
+  const servedMap = useMemo(() => {
+    const m = new Map<number, ServedEntry>();
+    for (const s of servedSwr.data?.served ?? []) m.set(s.recordId, s);
+    return m;
+  }, [servedSwr.data]);
+
+  const handleToggleServed = useCallback(
+    async (entry: PastoralEntry, currentlyServed: boolean) => {
+      const next: ServedEntry[] = (servedSwr.data?.served ?? []).filter(
+        (s) => s.recordId !== entry.id,
+      );
+      if (!currentlyServed) {
+        next.push({
+          recordId: entry.id,
+          servedBy: "you",
+          servedAt: new Date().toISOString(),
+        });
+      }
+      void servedSwr.mutate({ served: next }, { revalidate: false });
+      const method = currentlyServed ? "DELETE" : "POST";
+      try {
+        const res = await fetch("/api/clipboard", {
+          method,
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            recordId: entry.id,
+            weekend: tickBucket,
+            studentName: entry.studentName,
+            dorm: entry.dorm,
+            category: entry.category,
+            recordDate: entry.date,
+          }),
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      } catch (err) {
+        showToast(
+          err instanceof Error
+            ? err.message
+            : "Could not update served state",
+        );
+      }
+      void servedSwr.mutate();
+    },
+    [servedSwr, tickBucket, showToast],
+  );
 
   const handleAddSave = useCallback(
     async (draft: AddLinkDraft | EditLinkDraft) => {
@@ -940,12 +1143,23 @@ export function DashboardClient({
     [weekendRecords, query, weekendDorm],
   );
 
+  const events = activities.data?.events ?? [];
+  const filteredEvents = useMemo(() => {
+    if (active !== "activities" || !query.trim()) return events;
+    const q = query.toLowerCase();
+    return events.filter((e) =>
+      [e.summary, e.location, e.description]
+        .filter(Boolean)
+        .some((v) => String(v).toLowerCase().includes(q)),
+    );
+  }, [active, events, query]);
+
   const counts: Record<TabKey, number> = {
     byDorm: 0, // wired in W4
     hc: allStudents.length,
     noPa: noPaStudents.length,
     weekendInfractions: weekendRecords.length,
-    activities: 0, // wired in W3
+    activities: events.length,
   };
 
   const rosterCount =
@@ -955,7 +1169,9 @@ export function DashboardClient({
         ? filteredNoPa.length
         : active === "weekendInfractions"
           ? weekendFiltered.length
-          : 0;
+          : active === "activities"
+            ? filteredEvents.length
+            : 0;
 
   return (
     <div className="cr" data-density="balanced">
@@ -1017,6 +1233,18 @@ export function DashboardClient({
                 categories={WEEKEND_INFRACTION_CATEGORIES}
                 emptyMessage="No outstanding weekend infractions."
                 onCardClick={(e) => setDrawer({ kind: "infraction", item: e })}
+                servedMap={servedMap}
+                onToggleServed={handleToggleServed}
+              />
+            )
+          ) : active === "activities" ? (
+            !activities.data ? (
+              <div className="cr-empty">Loading…</div>
+            ) : (
+              <ActivitiesTab
+                events={filteredEvents}
+                configured={activities.data.configured}
+                error={activities.data.error}
               />
             )
           ) : (
