@@ -32,6 +32,9 @@ function formatDateTime(iso: string): string {
   return new Intl.DateTimeFormat("en-GB", {
     timeZone: "Europe/Zurich",
     weekday: "short",
+    day: "numeric",
+    month: "short",
+    year: "numeric",
     hour: "2-digit",
     minute: "2-digit",
     hour12: false,
