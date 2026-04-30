@@ -537,6 +537,7 @@ export function LiveClient(props: Props) {
   const [active, setActive] = useState<TabKey>("hc");
   const [query, setQuery] = useState("");
   const [todayDorm, setTodayDorm] = useState("all");
+  const [weekendDorm, setWeekendDorm] = useState("all");
   const [refreshing, setRefreshing] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [now, setNow] = useState<string>(() =>
@@ -564,6 +565,21 @@ export function LiveClient(props: Props) {
     { refreshInterval: REFRESH_MS },
   );
 
+  const weekendUrl = useMemo(() => {
+    const params = new URLSearchParams({
+      categories: props.weekendCategories.join(","),
+      watchlist: "1",
+      limit: "200",
+    });
+    return `/api/orah/pastoral-by-category?${params.toString()}`;
+  }, [props.weekendCategories]);
+
+  const weekendInfractions = useSWR<{ records: PastoralEntry[] }>(
+    props.weekendCategories.length > 0 ? weekendUrl : null,
+    fetcher,
+    { refreshInterval: REFRESH_MS },
+  );
+
   useEffect(() => {
     const id = setInterval(
       () => setNow(formatTime(new Date().toISOString())),
@@ -579,11 +595,15 @@ export function LiveClient(props: Props) {
 
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
-    await Promise.all([hc.mutate(), todayInfractions.mutate()]);
+    await Promise.all([
+      hc.mutate(),
+      todayInfractions.mutate(),
+      weekendInfractions.mutate(),
+    ]);
     setRefreshing(false);
     setToast("Refreshed");
     window.setTimeout(() => setToast(null), 2000);
-  }, [hc, todayInfractions]);
+  }, [hc, todayInfractions, weekendInfractions]);
 
   const allStudents = hc.data?.students ?? [];
   const hcInNow = allStudents.filter((s) => s.status === "in").length;
@@ -605,10 +625,20 @@ export function LiveClient(props: Props) {
     [todayRecords, query, todayDorm],
   );
 
+  const weekendRecords = weekendInfractions.data?.records ?? [];
+  const weekendDorms = useMemo(
+    () => uniqueDorms(weekendRecords),
+    [weekendRecords],
+  );
+  const weekendFiltered = useMemo(
+    () => filterInfractions(weekendRecords, query, weekendDorm),
+    [weekendRecords, query, weekendDorm],
+  );
+
   const counts: Record<TabKey, number> = {
     hc: hcInNow,
     today: todayRecords.length,
-    weekend: 0, // wired in chunk 3
+    weekend: weekendRecords.length,
     activities: 0, // wired in chunk 4
   };
 
@@ -617,10 +647,9 @@ export function LiveClient(props: Props) {
       ? filteredStudents.length
       : active === "today"
         ? todayFiltered.length
-        : 0;
-
-  // Touch props that the page passes so they stay in scope for next chunks.
-  void props.weekendCategories;
+        : active === "weekend"
+          ? weekendFiltered.length
+          : 0;
 
   return (
     <div className="cr" data-density="balanced">
@@ -644,6 +673,12 @@ export function LiveClient(props: Props) {
                 active={todayDorm}
                 onSelect={setTodayDorm}
               />
+            ) : active === "weekend" ? (
+              <DormChips
+                dorms={weekendDorms}
+                active={weekendDorm}
+                onSelect={setWeekendDorm}
+              />
             ) : null
           }
         >
@@ -663,6 +698,18 @@ export function LiveClient(props: Props) {
                 records={todayFiltered}
                 categories={props.todayCategories}
                 emptyMessage="No outstanding infractions to serve today."
+              />
+            )
+          ) : active === "weekend" ? (
+            !weekendInfractions.data ? (
+              <div className="cr-empty">Loading…</div>
+            ) : props.weekendCategories.length === 0 ? (
+              <div className="cr-empty">No weekend categories configured.</div>
+            ) : (
+              <InfractionsTab
+                records={weekendFiltered}
+                categories={props.weekendCategories}
+                emptyMessage="No outstanding weekend infractions."
               />
             )
           ) : (
