@@ -1,15 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import type { ReactNode } from "react";
 import useSWR from "swr";
 
 import { Icon, LASCrest } from "@/components/dashboard/icon";
-import { EmptyState, SectionShell } from "@/components/dashboard/sections";
 import { Toast } from "@/components/dashboard/toast";
-import { ActivitiesCalendar } from "@/components/shared/activities-calendar";
-import { PastoralCategoryGrid } from "@/components/shared/pastoral-category-grid";
-import { PastoralDormPivot } from "@/components/shared/pastoral-dorm-pivot";
 import { signOutAction } from "@/lib/auth-actions";
 
 interface Props {
@@ -17,14 +14,6 @@ interface Props {
   todayCategories: string[];
   weekendCategories: string[];
 }
-
-const fetcher = async <T,>(url: string): Promise<T> => {
-  const res = await fetch(url);
-  if (!res.ok) {
-    throw new Error(`${res.status} ${res.statusText}`);
-  }
-  return res.json() as Promise<T>;
-};
 
 interface HCStudent {
   id: number;
@@ -42,30 +31,40 @@ interface HCStudent {
   durationMinutes: number;
 }
 
-interface DormNote {
-  id: number;
-  date: string;
-  studentName: string;
-  studentInitials: string;
-  dorm: string;
-  description: string;
-  createdBy: string;
+const REFRESH_MS = 30_000;
+const TZ = "Europe/Zurich";
+
+const fetcher = async <T,>(url: string): Promise<T> => {
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+  return res.json() as Promise<T>;
+};
+
+function hueFromString(s: string): number {
+  let h = 0;
+  for (let i = 0; i < s.length; i++) {
+    h = (h * 31 + s.charCodeAt(i)) >>> 0;
+  }
+  return h % 360;
 }
 
-const REFRESH_MS = 30_000;
+function photoGradient(seed: string): string {
+  const hue = hueFromString(seed);
+  return `linear-gradient(160deg, hsl(${hue}, 38%, 32%) 0%, hsl(${(hue + 30) % 360}, 42%, 22%) 100%)`;
+}
 
 function formatTime(iso: string): string {
   return new Intl.DateTimeFormat("en-GB", {
-    timeZone: "Europe/Zurich",
+    timeZone: TZ,
     hour: "2-digit",
     minute: "2-digit",
     hour12: false,
   }).format(new Date(iso));
 }
 
-function formatDateTime(iso: string): string {
+function formatCheckIn(iso: string): string {
   return new Intl.DateTimeFormat("en-GB", {
-    timeZone: "Europe/Zurich",
+    timeZone: TZ,
     weekday: "short",
     hour: "2-digit",
     minute: "2-digit",
@@ -80,102 +79,321 @@ function formatDuration(min: number): string {
   return m === 0 ? `${h}h` : `${h}h ${m}m`;
 }
 
-function HCRoster({ students }: { students: HCStudent[] }) {
-  const groups = new Map<string, HCStudent[]>();
-  for (const s of students) {
-    const key = s.isRestInRoom ? "Rest in Room" : s.location;
-    if (!groups.has(key)) groups.set(key, []);
-    groups.get(key)!.push(s);
-  }
-  const orderedKeys = Array.from(groups.keys()).sort((a, b) => {
-    if (a === "Rest in Room") return 1;
-    if (b === "Rest in Room") return -1;
-    return a.localeCompare(b);
-  });
+type TabKey = "hc" | "today" | "weekend" | "activities";
 
-  for (const list of groups.values()) {
-    list.sort((a, b) => {
-      if (a.status !== b.status) return a.status === "in" ? -1 : 1;
-      if (a.status === "in") {
-        return a.checkInISO.localeCompare(b.checkInISO); // longer stay first
-      }
-      return (b.checkOutISO ?? "").localeCompare(a.checkOutISO ?? "");
-    });
-  }
+interface Tab {
+  key: TabKey;
+  label: string;
+  titleEm: string;
+  sub: string;
+  searchPlaceholder: string;
+  unit: string;
+}
 
+const TABS: Tab[] = [
+  {
+    key: "hc",
+    label: "Health",
+    titleEm: "Center",
+    sub: "currently in HC",
+    searchPlaceholder: "Search students…",
+    unit: "STUDENTS",
+  },
+  {
+    key: "today",
+    label: "Today's",
+    titleEm: "Infractions",
+    sub: "outstanding watchlist",
+    searchPlaceholder: "Search infractions…",
+    unit: "ENTRIES",
+  },
+  {
+    key: "weekend",
+    label: "Weekend",
+    titleEm: "Infractions",
+    sub: "outstanding watchlist",
+    searchPlaceholder: "Search infractions…",
+    unit: "ENTRIES",
+  },
+  {
+    key: "activities",
+    label: "Activities",
+    titleEm: "Calendar",
+    sub: "upcoming events",
+    searchPlaceholder: "Search events…",
+    unit: "EVENTS",
+  },
+];
+
+function severity(n: number): "low" | "mid" | "high" {
+  if (n === 0) return "low";
+  if (n <= 2) return "mid";
+  return "high";
+}
+
+// ─── Top bar ─────────────────────────────────────────────────────
+
+function TopBar({
+  userName,
+  refreshing,
+  onRefresh,
+  asOf,
+}: {
+  userName: string | null;
+  refreshing: boolean;
+  onRefresh: () => void;
+  asOf: string;
+}) {
   return (
-    <div role="list">
-      {orderedKeys.map((key) => {
-        const list = groups.get(key) ?? [];
-        const activeCount = list.filter((s) => s.status === "in").length;
-        return (
-          <div key={key} className="hc-group">
-            <div className="hc-group__header">
-              <span className="hc-group__title">{key}</span>
-              <span className="hc-group__count">
-                {list.length} · {activeCount} in now
-              </span>
-            </div>
-            {list.map((s) => (
-              <div className="row" key={s.id} role="listitem">
-                <div className="row__initials">{s.initials}</div>
-                <div className="row__main">
-                  <div className="row__line">{s.name}</div>
-                  <div className="row__sub">
-                    <span>{s.dorm}</span>
-                    {s.isRestInRoom && s.roomNumber && (
-                      <>
-                        <span className="sep" />
-                        <span>Rm {s.roomNumber}</span>
-                      </>
-                    )}
-                    <span className="sep" />
-                    <span>
-                      {formatTime(s.checkInISO)}
-                      {s.checkOutISO ? `–${formatTime(s.checkOutISO)}` : ""}
-                    </span>
-                    <span className="sep" />
-                    <span>{formatDuration(s.durationMinutes)}</span>
-                  </div>
-                </div>
-                <div className="row__meta">
-                  {s.status === "in" ? (
-                    <span className="tag tag--in-now">In now</span>
-                  ) : (
-                    <span className="tag tag--discharged">
-                      Out {formatTime(s.checkOutISO!)}
-                    </span>
-                  )}
-                </div>
-              </div>
-            ))}
+    <header className="cr-bar">
+      <div className="cr-bar__brand">
+        <LASCrest size={28} />
+        <div>
+          <h1 className="cr-bar__title">
+            Live <em>Duty</em>
+          </h1>
+          <div className="cr-bar__subtitle">
+            Leysin American School · live snapshot
           </div>
+        </div>
+      </div>
+      <div className="cr-bar__meta">
+        <span className="cr-pill">
+          <span className="cr-pill__live" /> Live · {asOf}
+        </span>
+        {userName && (
+          <span>
+            AOC · <strong>{userName}</strong>
+          </span>
+        )}
+      </div>
+      <div className="cr-bar__actions">
+        <Link href="/weekend" className="btn btn--ghost btn--sm">
+          <Icon name="folder" size={13} /> Weekend
+        </Link>
+        <Link href="/analytics" className="btn btn--ghost btn--sm">
+          <Icon name="folder" size={13} /> Analytics
+        </Link>
+        <button
+          type="button"
+          className="btn btn--ghost btn--sm"
+          onClick={onRefresh}
+          title="Refresh"
+        >
+          <Icon
+            name="refresh"
+            size={13}
+            className={refreshing ? "refresh-spinning" : undefined}
+          />
+          Refresh
+        </button>
+        <form action={signOutAction}>
+          <button type="submit" className="btn btn--ghost btn--sm">
+            Sign out
+          </button>
+        </form>
+      </div>
+    </header>
+  );
+}
+
+// ─── Stats strip ─────────────────────────────────────────────────
+
+function StatsStrip({
+  active,
+  onSelect,
+  counts,
+}: {
+  active: TabKey;
+  onSelect: (k: TabKey) => void;
+  counts: Record<TabKey, number>;
+}) {
+  return (
+    <div className="cr-stats" role="tablist">
+      {TABS.map((t) => {
+        const n = counts[t.key];
+        const sev = severity(n);
+        const isActive = active === t.key;
+        return (
+          <button
+            key={t.key}
+            type="button"
+            role="tab"
+            aria-selected={isActive}
+            className={`cr-stat cr-stat--${sev}${isActive ? " is-active" : ""}`}
+            onClick={() => onSelect(t.key)}
+          >
+            <span className="cr-stat__pip" />
+            <div className="cr-stat__body">
+              <div className="cr-stat__label">
+                {t.label} {t.titleEm}
+              </div>
+              <div className="cr-stat__sub">{t.sub}</div>
+            </div>
+            <div className="cr-stat__num">{String(n).padStart(2, "0")}</div>
+          </button>
         );
       })}
     </div>
   );
 }
 
-export function LiveClient({
-  userName,
-  todayCategories,
-  weekendCategories,
-}: Props) {
+// ─── Roster shell ────────────────────────────────────────────────
+
+function RosterShell({
+  active,
+  query,
+  setQuery,
+  count,
+  filterRow,
+  children,
+}: {
+  active: TabKey;
+  query: string;
+  setQuery: (s: string) => void;
+  count: number;
+  filterRow?: ReactNode;
+  children: ReactNode;
+}) {
+  const tab = TABS.find((t) => t.key === active)!;
+  return (
+    <div className="cr-roster">
+      <div className="cr-roster__head">
+        <div className="cr-roster__title-row">
+          <h2 className="cr-roster__title">
+            {tab.label} <em>{tab.titleEm}</em>
+          </h2>
+          <span className="cr-roster__count">
+            {String(count).padStart(2, "0")} {tab.unit}
+          </span>
+        </div>
+        <div className="cr-roster__filters">
+          <div className="cr-search">
+            <Icon name="search" size={13} />
+            <input
+              type="text"
+              placeholder={tab.searchPlaceholder}
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+            />
+          </div>
+        </div>
+        {filterRow}
+      </div>
+      <div className="cr-roster__body">{children}</div>
+    </div>
+  );
+}
+
+// ─── HC tab ──────────────────────────────────────────────────────
+
+function hcTagInfo(s: HCStudent): { label: string; cls: "in" | "out" | "rest" | "overnight" } {
+  if (s.status === "discharged") {
+    return { label: `Out ${formatTime(s.checkOutISO ?? new Date().toISOString())}`, cls: "out" };
+  }
+  if (s.isRestInRoom) return { label: "Rest pass", cls: "rest" };
+  if (s.durationMinutes >= 720) return { label: "Overnight", cls: "overnight" };
+  return { label: "In HC", cls: "in" };
+}
+
+function HCCard({ s }: { s: HCStudent }) {
+  const tag = hcTagInfo(s);
+  const detail =
+    s.isRestInRoom && s.roomNumber ? `Rest · Rm ${s.roomNumber}` : s.reason;
+  return (
+    <button
+      type="button"
+      className={`cr-card cr-card--${tag.cls}`}
+      title={`${s.name} · ${s.dorm}`}
+    >
+      <div
+        className="cr-card__photo"
+        style={{ background: photoGradient(s.name) }}
+        aria-hidden
+      >
+        {s.initials}
+      </div>
+      <span className="cr-card__pip" aria-hidden />
+      <div className="cr-card__body">
+        <div className="cr-card__name">{s.name}</div>
+        <div className="cr-card__meta">
+          {formatCheckIn(s.checkInISO)} · {formatDuration(s.durationMinutes)}
+        </div>
+        <div className="cr-card__detail">{detail}</div>
+        <span className={`cr-card__tag cr-card__tag--${tag.cls}`}>
+          {tag.label}
+        </span>
+      </div>
+    </button>
+  );
+}
+
+function HCTab({ students }: { students: HCStudent[] }) {
+  const grouped = useMemo(() => {
+    const m = new Map<string, HCStudent[]>();
+    for (const s of students) {
+      const key = s.dorm || "—";
+      if (!m.has(key)) m.set(key, []);
+      m.get(key)!.push(s);
+    }
+    for (const list of m.values()) {
+      list.sort((a, b) => {
+        if (a.status !== b.status) return a.status === "in" ? -1 : 1;
+        return a.checkInISO.localeCompare(b.checkInISO);
+      });
+    }
+    return m;
+  }, [students]);
+
+  const dormKeys = useMemo(
+    () => Array.from(grouped.keys()).sort((a, b) => a.localeCompare(b)),
+    [grouped],
+  );
+
+  if (students.length === 0) {
+    return <div className="cr-empty">No HC students match.</div>;
+  }
+
+  return (
+    <>
+      {dormKeys.map((dorm) => {
+        const list = grouped.get(dorm) ?? [];
+        const inNow = list.filter((s) => s.status === "in").length;
+        return (
+          <div key={dorm} className="cr-dorm-group">
+            <div className="cr-dorm-group__head">
+              <h3 className="cr-dorm-group__title">{dorm}</h3>
+              <span className="cr-dorm-group__count">
+                {list.length} · {inNow} in now
+              </span>
+            </div>
+            <div className="cr-grid">
+              {list.map((s) => (
+                <HCCard key={s.id} s={s} />
+              ))}
+            </div>
+          </div>
+        );
+      })}
+    </>
+  );
+}
+
+// ─── Main component ──────────────────────────────────────────────
+
+export function LiveClient(props: Props) {
+  const [active, setActive] = useState<TabKey>("hc");
+  const [query, setQuery] = useState("");
+  const [refreshing, setRefreshing] = useState(false);
+  const [toast, setToast] = useState<string | null>(null);
+  const [now, setNow] = useState<string>(() =>
+    formatTime(new Date().toISOString()),
+  );
+
   const hc = useSWR<{ students: HCStudent[] }>(
     "/api/orah/health-center-live",
     fetcher,
     { refreshInterval: REFRESH_MS },
-  );
-  const dormNotes = useSWR<{
-    notes: DormNote[];
-    configured: boolean;
-    categoryName?: string;
-  }>("/api/orah/dorm-notes", fetcher, { refreshInterval: REFRESH_MS });
-
-  const [toast, setToast] = useState<string | null>(null);
-  const [refreshing, setRefreshing] = useState(false);
-  const [now, setNow] = useState<string>(() =>
-    formatTime(new Date().toISOString()),
   );
 
   useEffect(() => {
@@ -186,213 +404,75 @@ export function LiveClient({
     return () => clearInterval(id);
   }, []);
 
+  // Reset search when switching tabs.
+  useEffect(() => {
+    setQuery("");
+  }, [active]);
+
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
-    await Promise.all([hc.mutate(), dormNotes.mutate()]);
+    await hc.mutate();
     setRefreshing(false);
-    setToast("Live data refreshed");
+    setToast("Refreshed");
     window.setTimeout(() => setToast(null), 2000);
-  }, [hc, dormNotes]);
+  }, [hc]);
 
-  const hcCount = hc.data?.students.length ?? 0;
+  const allStudents = hc.data?.students ?? [];
+  const hcInNow = allStudents.filter((s) => s.status === "in").length;
+
+  const filteredStudents = useMemo(() => {
+    if (active !== "hc" || !query.trim()) return allStudents;
+    const q = query.toLowerCase();
+    return allStudents.filter((s) =>
+      [s.name, s.dorm, s.location, s.reason, s.roomNumber]
+        .filter(Boolean)
+        .some((v) => String(v).toLowerCase().includes(q)),
+    );
+  }, [active, allStudents, query]);
+
+  const counts: Record<TabKey, number> = {
+    hc: hcInNow,
+    today: 0, // wired in chunk 2
+    weekend: 0, // wired in chunk 3
+    activities: 0, // wired in chunk 4
+  };
+
+  const rosterCount =
+    active === "hc" ? filteredStudents.length : 0;
+
+  // Touch the props the page passes so they stay in scope for next chunks.
+  void props.todayCategories;
+  void props.weekendCategories;
 
   return (
-    <div className="app" data-density="balanced">
-      <header className="masthead">
-        <div>
-          <div className="masthead__crest">
-            <LASCrest size={16} />
-            Leysin American School · Live
-          </div>
-          <h1 className="masthead__title">
-            Live <em>Duty</em> Dashboard
-          </h1>
-          <div className="masthead__sub">
-            <span className="masthead__date">AS OF {now}</span>
-            <span className="dot" />
-            <span className="masthead__updated">refresh every 30s</span>
-          </div>
-        </div>
-        <div className="masthead__actions">
-          {userName ? (
-            <span className="masthead__welcome">Welcome {userName}</span>
-          ) : null}
-          <Link href="/weekend" className="btn btn--ghost btn--sm">
-            <Icon name="folder" size={14} />
-            Weekend Duty
-          </Link>
-          <Link href="/analytics" className="btn btn--ghost btn--sm">
-            <Icon name="folder" size={14} />
-            Analytics
-          </Link>
-          <button
-            type="button"
-            className="btn btn--ghost btn--sm"
-            onClick={handleRefresh}
-            title="Refresh"
-          >
-            <Icon
-              name="refresh"
-              size={14}
-              className={refreshing ? "refresh-spinning" : undefined}
-            />
-            Refresh
-          </button>
-          <form action={signOutAction}>
-            <button type="submit" className="btn btn--ghost btn--sm">
-              Sign out
-            </button>
-          </form>
-        </div>
-      </header>
-
-      <SectionShell
-        id="live-hc"
-        num="01"
-        title="Health"
-        titleEm="Center"
-        sub="Everyone seen in HC or on a rest pass since 05:00 today."
-        meta={`${hcCount} STUDENTS`}
-        collapsible
-      >
-        {hcCount === 0 ? (
-          <EmptyState message="No HC visits logged today." />
-        ) : (
-          <HCRoster students={hc.data?.students ?? []} />
-        )}
-      </SectionShell>
-
-      <PastoralCategoryGrid
-        id="live-today"
-        num="02"
-        title="Today's"
-        titleEm="Infractions"
-        sub="Watchlisted early check-ins (and weekend service entries on Fri/Sat/Sun). Rolls over until cleared in Orah."
-        emptyMessage="No outstanding infractions to serve today."
-        categories={todayCategories}
-        watchlistOnly
-        collapsible
+    <div className="cr" data-density="balanced">
+      <TopBar
+        userName={props.userName}
+        refreshing={refreshing}
+        onRefresh={handleRefresh}
+        asOf={now}
       />
-
-      <PastoralCategoryGrid
-        id="live-weekend"
-        num="03"
-        title="Weekend"
-        titleEm="Infractions"
-        sub="Watchlisted clipboard, dorm-night, and early check-in entries. Rolls over until cleared in Orah."
-        emptyMessage="No outstanding weekend infractions."
-        categories={weekendCategories}
-        watchlistOnly
-        collapsible
-      />
-
-      <PastoralDormPivot
-        id="live-24h"
-        num="04"
-        title="Infractions"
-        titleEm="Last 24 Hours"
-        sub="Discipline, concerns, early check-ins, and uniform violations from the past day, grouped by dorm."
-        emptyMessage="Nothing logged in the last 24 hours."
-        categories={[
-          "Phone violation",
-          "Concern",
-          "1-hour early check-in",
-          "2-hour early check-in",
-          "Uniform violation",
-        ]}
-        days={1}
-        collapsible
-      />
-
-      <PastoralDormPivot
-        id="live-wednesday-catchup"
-        num="05"
-        title="Wednesday"
-        titleEm="Catch-up"
-        sub="Watchlisted catch-up entries, grouped by dorm. Rolls over until cleared in Orah."
-        emptyMessage="No outstanding Wednesday catch-up."
-        categories={["Wednesday morning catch-up"]}
-        watchlistOnly
-        collapsible
-      />
-
-      <PastoralDormPivot
-        id="live-wednesday-makeup"
-        num="06"
-        title="Wednesday"
-        titleEm="Make-up Activity"
-        sub="Watchlisted make-up activity entries, grouped by dorm. Rolls over until cleared in Orah."
-        emptyMessage="No outstanding Wednesday make-up activity."
-        categories={["Wednesday make-up activity"]}
-        watchlistOnly
-        collapsible
-      />
-
-      <SectionShell
-        id="live-dorm-notes"
-        num="07"
-        title="Last Night"
-        titleEm="Dorm Notes"
-        sub={
-          dormNotes.data?.configured
-            ? `Pastoral category: ${dormNotes.data?.categoryName ?? ""}`
-            : "Configure DORM_NOTES_CATEGORY_NAME to enable."
-        }
-        meta={`${dormNotes.data?.notes.length ?? 0} NOTES`}
-        collapsible
-      >
-        {!dormNotes.data?.configured ? (
-          <EmptyState message="Set DORM_NOTES_CATEGORY_NAME to the Orah pastoral category used for nightly dorm notes." />
-        ) : (dormNotes.data?.notes.length ?? 0) === 0 ? (
-          <EmptyState message="No dorm notes recorded last night." />
-        ) : (
-          <div
-            role="list"
-            className={
-              (dormNotes.data?.notes.length ?? 0) > 4
-                ? "row-grid--two"
-                : undefined
-            }
-          >
-            {(dormNotes.data?.notes ?? []).map((n) => (
-              <div className="row" key={n.id} role="listitem">
-                <div className="row__initials">{n.studentInitials}</div>
-                <div className="row__main">
-                  <div className="row__line">{n.studentName}</div>
-                  <div className="row__sub">
-                    <span>{n.dorm}</span>
-                    <span className="sep" />
-                    <span>{formatDateTime(n.date)}</span>
-                    <span className="sep" />
-                    <span>by {n.createdBy}</span>
-                  </div>
-                  {n.description && (
-                    <div className="row__note">{n.description}</div>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </SectionShell>
-
-      <ActivitiesCalendar
-        id="live-calendar"
-        num="08"
-        title="Activities"
-        titleEm="Calendar"
-        sub="Upcoming events from the activities office calendar."
-        days={3}
-        collapsible
-      />
-
-      <footer className="colophon">
-        <div>LAS · 1854 Leysin · Internal tool</div>
-        <div className="colophon__center">
-          Live snapshot · refreshes every 30s
-        </div>
-        <div>v0.1 · Live · {new Date().getFullYear()}</div>
-      </footer>
+      <StatsStrip active={active} onSelect={setActive} counts={counts} />
+      <div className="cr-main">
+        <RosterShell
+          active={active}
+          query={query}
+          setQuery={setQuery}
+          count={rosterCount}
+        >
+          {active === "hc" ? (
+            !hc.data ? (
+              <div className="cr-empty">Loading…</div>
+            ) : (
+              <HCTab students={filteredStudents} />
+            )
+          ) : (
+            <div className="cr-empty">
+              Coming next — wiring in the next chunk.
+            </div>
+          )}
+        </RosterShell>
+      </div>
 
       <Toast message={toast} />
     </div>
