@@ -7,6 +7,7 @@ import useSWR from "swr";
 
 import { Icon, LASCrest } from "@/components/dashboard/icon";
 import { Toast } from "@/components/dashboard/toast";
+import type { PastoralEntry } from "@/components/shared/pastoral-row";
 import { signOutAction } from "@/lib/auth-actions";
 
 interface Props {
@@ -77,6 +78,15 @@ function formatDuration(min: number): string {
   const h = Math.floor(min / 60);
   const m = min % 60;
   return m === 0 ? `${h}h` : `${h}h ${m}m`;
+}
+
+function formatDate(iso: string): string {
+  return new Intl.DateTimeFormat("en-GB", {
+    timeZone: TZ,
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+  }).format(new Date(iso));
 }
 
 type TabKey = "hc" | "today" | "weekend" | "activities";
@@ -379,11 +389,154 @@ function HCTab({ students }: { students: HCStudent[] }) {
   );
 }
 
+// ─── Infractions tab (category-grouped, dorm-chip filtered) ──────
+
+function ServeCard({ entry }: { entry: PastoralEntry }) {
+  return (
+    <button
+      type="button"
+      className="cr-serve-card"
+      title={`${entry.studentName} · ${entry.category}`}
+    >
+      <div
+        className="cr-serve-card__photo"
+        style={{ background: photoGradient(entry.studentName) }}
+        aria-hidden
+      >
+        {entry.studentInitials}
+      </div>
+      <div className="cr-serve-card__body">
+        <div className="cr-serve-card__name">{entry.studentName}</div>
+        <div className="cr-serve-card__sub">
+          {entry.dorm} · {formatDate(entry.date)}
+        </div>
+        {entry.description && (
+          <div className="cr-serve-card__desc">{entry.description}</div>
+        )}
+        <div className="cr-serve-card__by">By {entry.createdBy}</div>
+      </div>
+    </button>
+  );
+}
+
+function DormChips({
+  dorms,
+  active,
+  onSelect,
+}: {
+  dorms: string[];
+  active: string;
+  onSelect: (dorm: string) => void;
+}) {
+  if (dorms.length === 0) return null;
+  return (
+    <div className="cr-dorm-chips">
+      <span className="cr-dorm-chips__label">Dorm</span>
+      <button
+        type="button"
+        className={`cr-dorm-chip${active === "all" ? " is-on" : ""}`}
+        onClick={() => onSelect("all")}
+      >
+        All
+      </button>
+      {dorms.map((d) => (
+        <button
+          key={d}
+          type="button"
+          className={`cr-dorm-chip${active === d ? " is-on" : ""}`}
+          onClick={() => onSelect(d)}
+        >
+          {d}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function InfractionsTab({
+  records,
+  categories,
+  emptyMessage,
+}: {
+  records: PastoralEntry[];
+  categories: string[];
+  emptyMessage: string;
+}) {
+  const grouped = useMemo(() => {
+    const m = new Map<string, PastoralEntry[]>();
+    for (const cat of categories) m.set(cat, []);
+    for (const r of records) {
+      const matchKey = categories.find(
+        (c) => c.toLowerCase() === r.category.toLowerCase(),
+      );
+      if (!matchKey) continue;
+      m.get(matchKey)!.push(r);
+    }
+    for (const list of m.values()) {
+      list.sort((a, b) => (a.date < b.date ? 1 : -1));
+    }
+    return m;
+  }, [records, categories]);
+
+  if (records.length === 0) {
+    return <div className="cr-empty">{emptyMessage}</div>;
+  }
+
+  return (
+    <div className="cr-serve">
+      {categories.map((cat) => {
+        const list = grouped.get(cat) ?? [];
+        if (list.length === 0) return null;
+        return (
+          <div key={cat} className="cr-serve__group">
+            <div className="cr-serve__group-head">
+              <h3 className="cr-serve__group-title">{cat}</h3>
+              <span className="cr-serve__group-count">
+                {list.length} {list.length === 1 ? "entry" : "entries"}
+              </span>
+            </div>
+            <div className="cr-serve__group-body">
+              {list.map((e) => (
+                <ServeCard key={e.id} entry={e} />
+              ))}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function uniqueDorms(records: PastoralEntry[]): string[] {
+  const set = new Set<string>();
+  for (const r of records) if (r.dorm) set.add(r.dorm);
+  return Array.from(set).sort((a, b) => a.localeCompare(b));
+}
+
+function filterInfractions(
+  records: PastoralEntry[],
+  query: string,
+  dorm: string,
+): PastoralEntry[] {
+  let out = records;
+  if (dorm !== "all") out = out.filter((r) => r.dorm === dorm);
+  const q = query.trim().toLowerCase();
+  if (q) {
+    out = out.filter((r) =>
+      [r.studentName, r.dorm, r.category, r.description, r.createdBy]
+        .filter(Boolean)
+        .some((v) => String(v).toLowerCase().includes(q)),
+    );
+  }
+  return out;
+}
+
 // ─── Main component ──────────────────────────────────────────────
 
 export function LiveClient(props: Props) {
   const [active, setActive] = useState<TabKey>("hc");
   const [query, setQuery] = useState("");
+  const [todayDorm, setTodayDorm] = useState("all");
   const [refreshing, setRefreshing] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [now, setNow] = useState<string>(() =>
@@ -392,6 +545,21 @@ export function LiveClient(props: Props) {
 
   const hc = useSWR<{ students: HCStudent[] }>(
     "/api/orah/health-center-live",
+    fetcher,
+    { refreshInterval: REFRESH_MS },
+  );
+
+  const todayUrl = useMemo(() => {
+    const params = new URLSearchParams({
+      categories: props.todayCategories.join(","),
+      watchlist: "1",
+      limit: "200",
+    });
+    return `/api/orah/pastoral-by-category?${params.toString()}`;
+  }, [props.todayCategories]);
+
+  const todayInfractions = useSWR<{ records: PastoralEntry[] }>(
+    props.todayCategories.length > 0 ? todayUrl : null,
     fetcher,
     { refreshInterval: REFRESH_MS },
   );
@@ -411,11 +579,11 @@ export function LiveClient(props: Props) {
 
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
-    await hc.mutate();
+    await Promise.all([hc.mutate(), todayInfractions.mutate()]);
     setRefreshing(false);
     setToast("Refreshed");
     window.setTimeout(() => setToast(null), 2000);
-  }, [hc]);
+  }, [hc, todayInfractions]);
 
   const allStudents = hc.data?.students ?? [];
   const hcInNow = allStudents.filter((s) => s.status === "in").length;
@@ -430,18 +598,28 @@ export function LiveClient(props: Props) {
     );
   }, [active, allStudents, query]);
 
+  const todayRecords = todayInfractions.data?.records ?? [];
+  const todayDorms = useMemo(() => uniqueDorms(todayRecords), [todayRecords]);
+  const todayFiltered = useMemo(
+    () => filterInfractions(todayRecords, query, todayDorm),
+    [todayRecords, query, todayDorm],
+  );
+
   const counts: Record<TabKey, number> = {
     hc: hcInNow,
-    today: 0, // wired in chunk 2
+    today: todayRecords.length,
     weekend: 0, // wired in chunk 3
     activities: 0, // wired in chunk 4
   };
 
   const rosterCount =
-    active === "hc" ? filteredStudents.length : 0;
+    active === "hc"
+      ? filteredStudents.length
+      : active === "today"
+        ? todayFiltered.length
+        : 0;
 
-  // Touch the props the page passes so they stay in scope for next chunks.
-  void props.todayCategories;
+  // Touch props that the page passes so they stay in scope for next chunks.
   void props.weekendCategories;
 
   return (
@@ -459,12 +637,33 @@ export function LiveClient(props: Props) {
           query={query}
           setQuery={setQuery}
           count={rosterCount}
+          filterRow={
+            active === "today" ? (
+              <DormChips
+                dorms={todayDorms}
+                active={todayDorm}
+                onSelect={setTodayDorm}
+              />
+            ) : null
+          }
         >
           {active === "hc" ? (
             !hc.data ? (
               <div className="cr-empty">Loading…</div>
             ) : (
               <HCTab students={filteredStudents} />
+            )
+          ) : active === "today" ? (
+            !todayInfractions.data ? (
+              <div className="cr-empty">Loading…</div>
+            ) : props.todayCategories.length === 0 ? (
+              <div className="cr-empty">No categories configured for today.</div>
+            ) : (
+              <InfractionsTab
+                records={todayFiltered}
+                categories={props.todayCategories}
+                emptyMessage="No outstanding infractions to serve today."
+              />
             )
           ) : (
             <div className="cr-empty">
