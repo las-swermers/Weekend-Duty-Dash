@@ -38,7 +38,15 @@ export async function GET(req: NextRequest) {
 
   const params = req.nextUrl.searchParams;
   const rawCategories = params.get("categories") ?? "";
-  const days = Math.max(1, Math.min(180, Number(params.get("days")) || 7));
+  const watchlistOnly = params.get("watchlist") === "1";
+  // Watchlist queries default to a long lookback because items roll
+  // over until staff clears the flag in Orah; a 7-day window would
+  // miss anything older.
+  const defaultDays = watchlistOnly ? 180 : 7;
+  const days = Math.max(
+    1,
+    Math.min(365, Number(params.get("days")) || defaultDays),
+  );
   const limit = Math.max(1, Math.min(200, Number(params.get("limit")) || 50));
 
   // Optional explicit window; both must parse for the override to apply.
@@ -90,11 +98,22 @@ export async function GET(req: NextRequest) {
     const studentMap = buildStudentMap(students);
     const houseMap = buildHouseMap(houses);
     const targetSet = new Set(categories);
+    const nowMs = Date.now();
 
     const filtered = records
       .filter((r) => {
         const name = r.pastoral_category?.name?.toLowerCase();
-        return name ? targetSet.has(name) : false;
+        if (!name || !targetSet.has(name)) return false;
+        if (watchlistOnly) {
+          if (!r.watchlist) return false;
+          if (
+            r.watchlist_expiry &&
+            new Date(r.watchlist_expiry).getTime() < nowMs
+          ) {
+            return false;
+          }
+        }
+        return true;
       })
       .sort((a, b) => (a.date < b.date ? 1 : -1))
       .slice(0, limit);
@@ -122,6 +141,7 @@ export async function GET(req: NextRequest) {
       meta: {
         categories,
         days,
+        watchlistOnly,
         recordsScanned: records.length,
         returned: out.length,
       },

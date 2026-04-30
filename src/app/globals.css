@@ -338,6 +338,48 @@ a { color: inherit; }
   letter-spacing: 0.1em;
   color: var(--ink-4);
   text-transform: uppercase;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.section__collapse {
+  font-family: var(--mono);
+  font-size: 13px;
+  line-height: 1;
+  color: var(--ink-3);
+  background: none;
+  border: none;
+  padding: 2px 4px;
+  cursor: pointer;
+}
+.section__collapse:hover { color: var(--ink); }
+
+.cal-day {
+  display: contents;
+}
+.cal-day__header {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  color: var(--ink-4);
+  text-transform: uppercase;
+  padding: 14px 0 4px;
+  border-top: 1px solid var(--ink-2);
+}
+.cal-day:first-of-type .cal-day__header { border-top: none; }
+.cal-row__time {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  color: var(--ink-3);
+}
+.cal-row__desc {
+  display: -webkit-box;
+  -webkit-line-clamp: 1;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  max-width: 360px;
 }
 
 .section__sub {
@@ -431,6 +473,24 @@ a { color: inherit; }
   white-space: nowrap;
 }
 
+.row__toggle {
+  font-family: var(--mono);
+  font-size: 16px;
+  line-height: 1;
+  width: 22px;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+  background: var(--paper);
+  color: var(--ink-2);
+  cursor: pointer;
+  padding: 0;
+}
+.row__toggle:hover { color: var(--ink); border-color: var(--ink-3); }
+
 .tag {
   display: inline-flex;
   align-items: center;
@@ -452,6 +512,25 @@ a { color: inherit; }
 .tag--in { background: var(--paper-3); color: var(--ink-2); }
 .tag--watchlist { background: var(--coral-soft); color: var(--coral-ink); border-color: transparent; }
 .tag--sensitive { background: var(--amber-soft); color: var(--amber-ink); border-color: transparent; }
+.tag--in-now { background: var(--moss-soft); color: var(--moss); border-color: transparent; }
+.tag--discharged { background: var(--paper-3); color: var(--ink-3); border-color: var(--rule); }
+
+.hc-group + .hc-group { margin-top: 14px; }
+.hc-group__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  color: var(--ink-4);
+  text-transform: uppercase;
+  padding: 14px 0 4px;
+  border-top: 1px solid var(--ink-2);
+}
+.hc-group:first-of-type .hc-group__header { border-top: none; padding-top: 0; }
+.hc-group__title { color: var(--ink-2); }
+.hc-group__count { color: var(--ink-4); }
 
 /* Trip rows are slightly different */
 

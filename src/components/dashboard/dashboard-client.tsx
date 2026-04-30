@@ -12,6 +12,7 @@ import { AlertSummary } from "@/components/dashboard/alert-summary";
 import { Launchpad } from "@/components/dashboard/launchpad";
 import { Masthead } from "@/components/dashboard/masthead";
 import { HCSection, NoPaSection } from "@/components/dashboard/sections";
+import { ActivitiesCalendar } from "@/components/shared/activities-calendar";
 import { PastoralCategoryGrid } from "@/components/shared/pastoral-category-grid";
 import { Toast } from "@/components/dashboard/toast";
 import type { HCStudent, NoPaStudent } from "@/lib/mock";
@@ -182,8 +183,8 @@ export function DashboardClient({
         num="03"
         title="To Serve"
         titleEm="This Weekend"
-        sub="Clipboards, dorm-night restrictions, and early check-ins for the upcoming weekend."
-        emptyMessage="No infractions logged for this weekend yet."
+        sub="Watchlisted clipboards, dorm-night restrictions, and early check-ins. Rolls over until cleared in Orah."
+        emptyMessage="No outstanding infractions on the watchlist."
         categories={[
           "Saturday Clipboard",
           "Sunday Clipboard",
@@ -192,9 +193,18 @@ export function DashboardClient({
           "1-hour early check-in",
           "2-hour early check-in",
         ]}
+        watchlistOnly
+      />
+
+      <ActivitiesCalendar
+        id="weekend-calendar"
+        num="04"
+        title="Activities"
+        titleEm="Calendar"
+        sub="Trips and events scheduled for this weekend."
         startISO={weekendRange.startISO}
         endISO={weekendRange.endISO}
-        enableTickOff
+        collapsible
       />
 
       <Launchpad

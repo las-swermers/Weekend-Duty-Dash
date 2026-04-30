@@ -25,6 +25,9 @@ interface Props {
   refreshMs?: number;
   enableTickOff?: boolean;
   bucketISO?: string;
+  collapsible?: boolean;
+  defaultCollapsed?: boolean;
+  watchlistOnly?: boolean;
 }
 
 type SortKey = "count" | "name";
@@ -59,11 +62,16 @@ export function PastoralDormPivot({
   refreshMs = 60_000,
   enableTickOff = false,
   bucketISO,
+  collapsible = false,
+  defaultCollapsed = false,
+  watchlistOnly = false,
 }: Props) {
   const tickBucket = bucketISO ?? startISO ?? "";
   const params = new URLSearchParams();
   params.set("categories", categories.join(","));
-  if (startISO && endISO) {
+  if (watchlistOnly) {
+    params.set("watchlist", "1");
+  } else if (startISO && endISO) {
     params.set("start", startISO);
     params.set("end", endISO);
   } else if (days) {
@@ -184,6 +192,8 @@ export function PastoralDormPivot({
       titleEm={titleEm}
       sub={sub}
       meta={`${total} ENTRIES`}
+      collapsible={collapsible}
+      defaultCollapsed={defaultCollapsed}
     >
       <div className="weekend-cat-controls">
         <div className="weekend-cat-controls__group">

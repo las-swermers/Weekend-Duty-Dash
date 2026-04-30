@@ -7,6 +7,7 @@ import useSWR from "swr";
 import { Icon, LASCrest } from "@/components/dashboard/icon";
 import { EmptyState, SectionShell } from "@/components/dashboard/sections";
 import { Toast } from "@/components/dashboard/toast";
+import { ActivitiesCalendar } from "@/components/shared/activities-calendar";
 import { PastoralCategoryGrid } from "@/components/shared/pastoral-category-grid";
 import { PastoralDormPivot } from "@/components/shared/pastoral-dorm-pivot";
 import { signOutAction } from "@/lib/auth-actions";
@@ -14,11 +15,7 @@ import { signOutAction } from "@/lib/auth-actions";
 interface Props {
   userName: string | null;
   todayCategories: string[];
-  todayStartISO: string;
-  todayEndISO: string;
-  weekendBucketISO: string;
-  makeupStartISO: string;
-  makeupEndISO: string;
+  weekendCategories: string[];
 }
 
 const fetcher = async <T,>(url: string): Promise<T> => {
@@ -34,10 +31,15 @@ interface HCStudent {
   name: string;
   initials: string;
   dorm: string;
+  roomNumber?: string;
   reason: string;
-  since: string;
-  status: "in" | "overnight";
   location: string;
+  locationId: number;
+  isRestInRoom: boolean;
+  status: "in" | "discharged";
+  checkInISO: string;
+  checkOutISO?: string;
+  durationMinutes: number;
 }
 
 interface DormNote {
@@ -71,14 +73,93 @@ function formatDateTime(iso: string): string {
   }).format(new Date(iso));
 }
 
+function formatDuration(min: number): string {
+  if (min < 60) return `${min}m`;
+  const h = Math.floor(min / 60);
+  const m = min % 60;
+  return m === 0 ? `${h}h` : `${h}h ${m}m`;
+}
+
+function HCRoster({ students }: { students: HCStudent[] }) {
+  const groups = new Map<string, HCStudent[]>();
+  for (const s of students) {
+    const key = s.isRestInRoom ? "Rest in Room" : s.location;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key)!.push(s);
+  }
+  const orderedKeys = Array.from(groups.keys()).sort((a, b) => {
+    if (a === "Rest in Room") return 1;
+    if (b === "Rest in Room") return -1;
+    return a.localeCompare(b);
+  });
+
+  for (const list of groups.values()) {
+    list.sort((a, b) => {
+      if (a.status !== b.status) return a.status === "in" ? -1 : 1;
+      if (a.status === "in") {
+        return a.checkInISO.localeCompare(b.checkInISO); // longer stay first
+      }
+      return (b.checkOutISO ?? "").localeCompare(a.checkOutISO ?? "");
+    });
+  }
+
+  return (
+    <div role="list">
+      {orderedKeys.map((key) => {
+        const list = groups.get(key) ?? [];
+        const activeCount = list.filter((s) => s.status === "in").length;
+        return (
+          <div key={key} className="hc-group">
+            <div className="hc-group__header">
+              <span className="hc-group__title">{key}</span>
+              <span className="hc-group__count">
+                {list.length} · {activeCount} in now
+              </span>
+            </div>
+            {list.map((s) => (
+              <div className="row" key={s.id} role="listitem">
+                <div className="row__initials">{s.initials}</div>
+                <div className="row__main">
+                  <div className="row__line">{s.name}</div>
+                  <div className="row__sub">
+                    <span>{s.dorm}</span>
+                    {s.isRestInRoom && s.roomNumber && (
+                      <>
+                        <span className="sep" />
+                        <span>Rm {s.roomNumber}</span>
+                      </>
+                    )}
+                    <span className="sep" />
+                    <span>
+                      {formatTime(s.checkInISO)}
+                      {s.checkOutISO ? `–${formatTime(s.checkOutISO)}` : ""}
+                    </span>
+                    <span className="sep" />
+                    <span>{formatDuration(s.durationMinutes)}</span>
+                  </div>
+                </div>
+                <div className="row__meta">
+                  {s.status === "in" ? (
+                    <span className="tag tag--in-now">In now</span>
+                  ) : (
+                    <span className="tag tag--discharged">
+                      Out {formatTime(s.checkOutISO!)}
+                    </span>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 export function LiveClient({
   userName,
   todayCategories,
-  todayStartISO,
-  todayEndISO,
-  weekendBucketISO,
-  makeupStartISO,
-  makeupEndISO,
+  weekendCategories,
 }: Props) {
   const hc = useSWR<{ students: HCStudent[] }>(
     "/api/orah/health-center-live",
@@ -170,69 +251,44 @@ export function LiveClient({
         num="01"
         title="Health"
         titleEm="Center"
-        sub="Students currently checked in."
+        sub="Everyone seen in HC or on a rest pass since 05:00 today."
         meta={`${hcCount} STUDENTS`}
+        collapsible
       >
         {hcCount === 0 ? (
-          <EmptyState message="No students in HC right now." />
+          <EmptyState message="No HC visits logged today." />
         ) : (
-          <div role="list">
-            {(hc.data?.students ?? []).map((s) => (
-              <div className="row" key={s.id} role="listitem">
-                <div className="row__initials">{s.initials}</div>
-                <div className="row__main">
-                  <div className="row__line">{s.name}</div>
-                  <div className="row__sub">
-                    <span>{s.dorm}</span>
-                    <span className="sep" />
-                    <span>{s.location}</span>
-                    <span className="sep" />
-                    <span>since {s.since}</span>
-                  </div>
-                </div>
-                <div className="row__meta">
-                  {s.status === "overnight" ? (
-                    <span className="tag tag--overnight">Overnight</span>
-                  ) : (
-                    <span className="tag tag--in">In</span>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
+          <HCRoster students={hc.data?.students ?? []} />
         )}
       </SectionShell>
 
-      {todayCategories.length > 0 ? (
-        <PastoralCategoryGrid
-          id="live-today"
-          num="02"
-          title="Today's"
-          titleEm="Service"
-          sub="Infractions due to be served today, grouped by category."
-          emptyMessage="No service entries logged for today yet."
-          categories={todayCategories}
-          startISO={todayStartISO}
-          endISO={todayEndISO}
-          enableTickOff
-          bucketISO={weekendBucketISO}
-        />
-      ) : (
-        <SectionShell
-          id="live-today"
-          num="02"
-          title="Today's"
-          titleEm="Service"
-          sub="Weekday — clipboards & dorm-night service resume Friday."
-          meta="0 ENTRIES"
-        >
-          <EmptyState message="No service due today." />
-        </SectionShell>
-      )}
+      <PastoralCategoryGrid
+        id="live-today"
+        num="02"
+        title="Today's"
+        titleEm="Infractions"
+        sub="Watchlisted early check-ins (and weekend service entries on Fri/Sat/Sun). Rolls over until cleared in Orah."
+        emptyMessage="No outstanding infractions to serve today."
+        categories={todayCategories}
+        watchlistOnly
+        collapsible
+      />
+
+      <PastoralCategoryGrid
+        id="live-weekend"
+        num="03"
+        title="Weekend"
+        titleEm="Infractions"
+        sub="Watchlisted clipboard, dorm-night, and early check-in entries. Rolls over until cleared in Orah."
+        emptyMessage="No outstanding weekend infractions."
+        categories={weekendCategories}
+        watchlistOnly
+        collapsible
+      />
 
       <PastoralDormPivot
         id="live-24h"
-        num="03"
+        num="04"
         title="Infractions"
         titleEm="Last 24 Hours"
         sub="Discipline, concerns, early check-ins, and uniform violations from the past day, grouped by dorm."
@@ -245,39 +301,36 @@ export function LiveClient({
           "Uniform violation",
         ]}
         days={1}
+        collapsible
       />
 
       <PastoralDormPivot
         id="live-wednesday-catchup"
-        num="04"
+        num="05"
         title="Wednesday"
         titleEm="Catch-up"
-        sub="Catch-up entries logged for the upcoming Wednesday, grouped by dorm. Resets every Wednesday at midnight."
-        emptyMessage="No Wednesday catch-up logged this cycle."
+        sub="Watchlisted catch-up entries, grouped by dorm. Rolls over until cleared in Orah."
+        emptyMessage="No outstanding Wednesday catch-up."
         categories={["Wednesday morning catch-up"]}
-        startISO={makeupStartISO}
-        endISO={makeupEndISO}
-        enableTickOff
-        bucketISO={makeupStartISO}
+        watchlistOnly
+        collapsible
       />
 
       <PastoralDormPivot
         id="live-wednesday-makeup"
-        num="05"
+        num="06"
         title="Wednesday"
         titleEm="Make-up Activity"
-        sub="Make-up activity entries logged for the upcoming Wednesday, grouped by dorm. Resets every Wednesday at midnight."
-        emptyMessage="No Wednesday make-up activity logged this cycle."
+        sub="Watchlisted make-up activity entries, grouped by dorm. Rolls over until cleared in Orah."
+        emptyMessage="No outstanding Wednesday make-up activity."
         categories={["Wednesday make-up activity"]}
-        startISO={makeupStartISO}
-        endISO={makeupEndISO}
-        enableTickOff
-        bucketISO={makeupStartISO}
+        watchlistOnly
+        collapsible
       />
 
       <SectionShell
         id="live-dorm-notes"
-        num="06"
+        num="07"
         title="Last Night"
         titleEm="Dorm Notes"
         sub={
@@ -286,13 +339,21 @@ export function LiveClient({
             : "Configure DORM_NOTES_CATEGORY_NAME to enable."
         }
         meta={`${dormNotes.data?.notes.length ?? 0} NOTES`}
+        collapsible
       >
         {!dormNotes.data?.configured ? (
           <EmptyState message="Set DORM_NOTES_CATEGORY_NAME to the Orah pastoral category used for nightly dorm notes." />
         ) : (dormNotes.data?.notes.length ?? 0) === 0 ? (
           <EmptyState message="No dorm notes recorded last night." />
         ) : (
-          <div role="list">
+          <div
+            role="list"
+            className={
+              (dormNotes.data?.notes.length ?? 0) > 4
+                ? "row-grid--two"
+                : undefined
+            }
+          >
             {(dormNotes.data?.notes ?? []).map((n) => (
               <div className="row" key={n.id} role="listitem">
                 <div className="row__initials">{n.studentInitials}</div>
@@ -314,6 +375,16 @@ export function LiveClient({
           </div>
         )}
       </SectionShell>
+
+      <ActivitiesCalendar
+        id="live-calendar"
+        num="08"
+        title="Activities"
+        titleEm="Calendar"
+        sub="Upcoming events from the activities office calendar."
+        days={3}
+        collapsible
+      />
 
       <footer className="colophon">
         <div>LAS · 1854 Leysin · Internal tool</div>
