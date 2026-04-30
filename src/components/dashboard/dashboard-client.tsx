@@ -13,6 +13,7 @@ import {
 import { Icon, LASCrest } from "@/components/dashboard/icon";
 import { Launchpad } from "@/components/dashboard/launchpad";
 import { Toast } from "@/components/dashboard/toast";
+import type { PastoralEntry } from "@/components/shared/pastoral-row";
 import { signOutAction } from "@/lib/auth-actions";
 import type { HCStudent, NoPaStudent } from "@/lib/mock";
 import type { Resource } from "@/types/resource";
@@ -54,6 +55,27 @@ function photoGradient(seed: string): string {
 function formatTime(iso: string): string {
   return new Intl.DateTimeFormat("en-GB", {
     timeZone: TZ,
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).format(new Date(iso));
+}
+
+function formatDate(iso: string): string {
+  return new Intl.DateTimeFormat("en-GB", {
+    timeZone: TZ,
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+  }).format(new Date(iso));
+}
+
+function formatDateTime(iso: string): string {
+  return new Intl.DateTimeFormat("en-GB", {
+    timeZone: TZ,
+    weekday: "short",
+    day: "numeric",
+    month: "short",
     hour: "2-digit",
     minute: "2-digit",
     hour12: false,
@@ -387,9 +409,267 @@ function HCTab({
   );
 }
 
-// ─── Detail drawer (HC only for W1) ──────────────────────────────
+// ─── No Phys. Activity tab ───────────────────────────────────────
 
-type DrawerState = { kind: "hc"; item: HCStudent } | null;
+function NoPaCard({
+  s,
+  onClick,
+}: {
+  s: NoPaStudent;
+  onClick: (s: NoPaStudent) => void;
+}) {
+  const name = s.name ?? s.initials;
+  return (
+    <button
+      type="button"
+      className="cr-card cr-card--rest"
+      title={`${name} · ${s.dorm}`}
+      onClick={() => onClick(s)}
+    >
+      <div
+        className="cr-card__photo"
+        style={{ background: photoGradient(name) }}
+        aria-hidden
+      >
+        {s.initials}
+      </div>
+      <span className="cr-card__pip" aria-hidden />
+      <div className="cr-card__body">
+        <div className="cr-card__name">{name}</div>
+        <div className="cr-card__meta">{s.dorm}</div>
+        <div className="cr-card__detail">{s.restriction}</div>
+        <span className="cr-card__tag cr-card__tag--rest">
+          {s.until === "ongoing" ? "Ongoing" : `Until ${s.until}`}
+        </span>
+      </div>
+    </button>
+  );
+}
+
+function NoPaTab({
+  students,
+  onCardClick,
+}: {
+  students: NoPaStudent[];
+  onCardClick: (s: NoPaStudent) => void;
+}) {
+  const grouped = useMemo(() => {
+    const m = new Map<string, NoPaStudent[]>();
+    for (const s of students) {
+      const key = s.dorm || "—";
+      if (!m.has(key)) m.set(key, []);
+      m.get(key)!.push(s);
+    }
+    for (const list of m.values()) {
+      list.sort((a, b) =>
+        (a.name ?? a.initials).localeCompare(b.name ?? b.initials),
+      );
+    }
+    return m;
+  }, [students]);
+
+  const groupKeys = useMemo(
+    () => Array.from(grouped.keys()).sort((a, b) => a.localeCompare(b)),
+    [grouped],
+  );
+
+  if (students.length === 0) {
+    return <div className="cr-empty">No active no-PA flags.</div>;
+  }
+  return (
+    <div className="cr-groups-cols">
+      {groupKeys.map((dorm) => {
+        const list = grouped.get(dorm) ?? [];
+        return (
+          <div key={dorm} className="cr-dorm-group">
+            <div className="cr-dorm-group__head">
+              <h3 className="cr-dorm-group__title">{dorm}</h3>
+              <span className="cr-dorm-group__count">{list.length}</span>
+            </div>
+            <div className="cr-grid">
+              {list.map((s) => (
+                <NoPaCard key={s.id} s={s} onClick={onCardClick} />
+              ))}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// ─── Weekend Infractions tab ─────────────────────────────────────
+
+const WEEKEND_INFRACTION_CATEGORIES = [
+  "Saturday Clipboard",
+  "Sunday Clipboard",
+  "Friday Night in the Dorm",
+  "Saturday Night in the Dorm",
+  "1-hour early check-in",
+  "2-hour early check-in",
+];
+
+function ServeCard({
+  entry,
+  onClick,
+}: {
+  entry: PastoralEntry;
+  onClick: (e: PastoralEntry) => void;
+}) {
+  return (
+    <button
+      type="button"
+      className="cr-serve-card"
+      title={`${entry.studentName} · ${entry.category}`}
+      onClick={() => onClick(entry)}
+    >
+      <div
+        className="cr-serve-card__photo"
+        style={{ background: photoGradient(entry.studentName) }}
+        aria-hidden
+      >
+        {entry.studentInitials}
+      </div>
+      <div className="cr-serve-card__body">
+        <div className="cr-serve-card__name">{entry.studentName}</div>
+        <div className="cr-serve-card__sub">
+          {entry.dorm} · {formatDate(entry.date)}
+        </div>
+        {entry.description && (
+          <div className="cr-serve-card__desc">{entry.description}</div>
+        )}
+        <div className="cr-serve-card__by">By {entry.createdBy}</div>
+      </div>
+    </button>
+  );
+}
+
+function DormChips({
+  dorms,
+  active,
+  onSelect,
+  hideAll = false,
+  label = "Dorm",
+}: {
+  dorms: string[];
+  active: string;
+  onSelect: (dorm: string) => void;
+  hideAll?: boolean;
+  label?: string;
+}) {
+  if (dorms.length === 0) return null;
+  return (
+    <div className="cr-dorm-chips">
+      <span className="cr-dorm-chips__label">{label}</span>
+      {!hideAll && (
+        <button
+          type="button"
+          className={`cr-dorm-chip${active === "all" ? " is-on" : ""}`}
+          onClick={() => onSelect("all")}
+        >
+          All
+        </button>
+      )}
+      {dorms.map((d) => (
+        <button
+          key={d}
+          type="button"
+          className={`cr-dorm-chip${active === d ? " is-on" : ""}`}
+          onClick={() => onSelect(d)}
+        >
+          {d}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function uniqueDorms(records: PastoralEntry[]): string[] {
+  const set = new Set<string>();
+  for (const r of records) if (r.dorm) set.add(r.dorm);
+  return Array.from(set).sort((a, b) => a.localeCompare(b));
+}
+
+function filterInfractions(
+  records: PastoralEntry[],
+  query: string,
+  dorm: string,
+): PastoralEntry[] {
+  let out = records;
+  if (dorm !== "all") out = out.filter((r) => r.dorm === dorm);
+  const q = query.trim().toLowerCase();
+  if (q) {
+    out = out.filter((r) =>
+      [r.studentName, r.dorm, r.category, r.description, r.createdBy]
+        .filter(Boolean)
+        .some((v) => String(v).toLowerCase().includes(q)),
+    );
+  }
+  return out;
+}
+
+function InfractionsTab({
+  records,
+  categories,
+  emptyMessage,
+  onCardClick,
+}: {
+  records: PastoralEntry[];
+  categories: string[];
+  emptyMessage: string;
+  onCardClick: (e: PastoralEntry) => void;
+}) {
+  const grouped = useMemo(() => {
+    const m = new Map<string, PastoralEntry[]>();
+    for (const cat of categories) m.set(cat, []);
+    for (const r of records) {
+      const matchKey = categories.find(
+        (c) => c.toLowerCase() === r.category.toLowerCase(),
+      );
+      if (!matchKey) continue;
+      m.get(matchKey)!.push(r);
+    }
+    for (const list of m.values()) {
+      list.sort((a, b) => (a.date < b.date ? 1 : -1));
+    }
+    return m;
+  }, [records, categories]);
+
+  if (records.length === 0) {
+    return <div className="cr-empty">{emptyMessage}</div>;
+  }
+  return (
+    <div className="cr-serve cr-groups-cols">
+      {categories.map((cat) => {
+        const list = grouped.get(cat) ?? [];
+        if (list.length === 0) return null;
+        return (
+          <div key={cat} className="cr-serve__group">
+            <div className="cr-serve__group-head">
+              <h3 className="cr-serve__group-title">{cat}</h3>
+              <span className="cr-serve__group-count">
+                {list.length} {list.length === 1 ? "entry" : "entries"}
+              </span>
+            </div>
+            <div className="cr-serve__group-body">
+              {list.map((e) => (
+                <ServeCard key={e.id} entry={e} onClick={onCardClick} />
+              ))}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// ─── Detail drawer ───────────────────────────────────────────────
+
+type DrawerState =
+  | { kind: "hc"; item: HCStudent }
+  | { kind: "noPa"; item: NoPaStudent }
+  | { kind: "infraction"; item: PastoralEntry }
+  | null;
 
 function Drawer({
   state,
@@ -399,16 +679,52 @@ function Drawer({
   onClose: () => void;
 }) {
   if (!state) return null;
-  const s = state.item;
-  const name = s.name ?? s.initials;
-  const tag = hcTagInfo(s);
-  const fields: Array<[string, string]> = [
-    ["Dorm", s.dorm || "—"],
-    ["Location", s.location || "Health Center"],
-    ["Reason", s.reason || "—"],
-    ["Since", s.since],
-    ["Status", tag.label],
-  ];
+
+  let name: string;
+  let initials: string;
+  let metaLine: string;
+  let fields: Array<[string, string]>;
+  let hueSeed: string;
+
+  if (state.kind === "hc") {
+    const s = state.item;
+    name = s.name ?? s.initials;
+    initials = s.initials;
+    hueSeed = name;
+    metaLine = s.dorm;
+    const tag = hcTagInfo(s);
+    fields = [
+      ["Dorm", s.dorm || "—"],
+      ["Location", s.location || "Health Center"],
+      ["Reason", s.reason || "—"],
+      ["Since", s.since],
+      ["Status", tag.label],
+    ];
+  } else if (state.kind === "noPa") {
+    const s = state.item;
+    name = s.name ?? s.initials;
+    initials = s.initials;
+    hueSeed = name;
+    metaLine = s.dorm;
+    fields = [
+      ["Dorm", s.dorm || "—"],
+      ["Restriction", s.restriction || "—"],
+      ["Until", s.until],
+    ];
+  } else {
+    const e = state.item;
+    name = e.studentName;
+    initials = e.studentInitials;
+    hueSeed = e.studentName;
+    metaLine = `${e.category} · ${e.dorm}`;
+    fields = [
+      ["Category", e.category],
+      ["Dorm", e.dorm || "—"],
+      ["Date", formatDateTime(e.date)],
+      ["Description", e.description || "—"],
+      ["Created by", e.createdBy || "—"],
+    ];
+  }
 
   return (
     <>
@@ -417,14 +733,14 @@ function Drawer({
         <div className="cr-drawer__head">
           <div
             className="cr-drawer__photo"
-            style={{ background: photoGradient(name) }}
+            style={{ background: photoGradient(hueSeed) }}
             aria-hidden
           >
-            {s.initials}
+            {initials}
           </div>
           <div>
             <h2 className="cr-drawer__name">{name}</h2>
-            <div className="cr-drawer__meta">{s.dorm}</div>
+            <div className="cr-drawer__meta">{metaLine}</div>
           </div>
           <button
             type="button"
@@ -470,6 +786,7 @@ export function DashboardClient({
   void weekendRange;
   const [active, setActive] = useState<TabKey>("byDorm");
   const [query, setQuery] = useState("");
+  const [weekendDorm, setWeekendDorm] = useState("all");
   const [drawer, setDrawer] = useState<DrawerState>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
@@ -486,6 +803,19 @@ export function DashboardClient({
     "/api/orah/no-pa",
     fetcher,
     { refreshInterval: REFRESH_MS, fallbackData: { students: initial.noPa } },
+  );
+  const weekendInfractionsUrl = useMemo(() => {
+    const params = new URLSearchParams({
+      categories: WEEKEND_INFRACTION_CATEGORIES.join(","),
+      watchlist: "1",
+      limit: "200",
+    });
+    return `/api/orah/pastoral-by-category?${params.toString()}`;
+  }, []);
+  const weekendInfractions = useSWR<{ records: PastoralEntry[] }>(
+    weekendInfractionsUrl,
+    fetcher,
+    { refreshInterval: REFRESH_MS },
   );
   const resources = useSWR<{
     resources: Resource[];
@@ -516,11 +846,16 @@ export function DashboardClient({
 
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
-    await Promise.all([hc.mutate(), noPa.mutate(), resources.mutate()]);
+    await Promise.all([
+      hc.mutate(),
+      noPa.mutate(),
+      weekendInfractions.mutate(),
+      resources.mutate(),
+    ]);
     setLastUpdated("just now");
     setRefreshing(false);
     showToast("Dashboard refreshed");
-  }, [hc, noPa, resources, showToast]);
+  }, [hc, noPa, weekendInfractions, resources, showToast]);
 
   const handleAddSave = useCallback(
     async (draft: AddLinkDraft | EditLinkDraft) => {
@@ -574,6 +909,7 @@ export function DashboardClient({
 
   const allStudents = hc.data?.students ?? [];
   const noPaStudents = noPa.data?.students ?? [];
+  const weekendRecords = weekendInfractions.data?.records ?? [];
 
   const filteredStudents = useMemo(() => {
     if (active !== "hc" || !query.trim()) return allStudents;
@@ -585,16 +921,41 @@ export function DashboardClient({
     );
   }, [active, allStudents, query]);
 
+  const filteredNoPa = useMemo(() => {
+    if (active !== "noPa" || !query.trim()) return noPaStudents;
+    const q = query.toLowerCase();
+    return noPaStudents.filter((s) =>
+      [s.name, s.initials, s.dorm, s.restriction, s.until]
+        .filter(Boolean)
+        .some((v) => String(v).toLowerCase().includes(q)),
+    );
+  }, [active, noPaStudents, query]);
+
+  const weekendDorms = useMemo(
+    () => uniqueDorms(weekendRecords),
+    [weekendRecords],
+  );
+  const weekendFiltered = useMemo(
+    () => filterInfractions(weekendRecords, query, weekendDorm),
+    [weekendRecords, query, weekendDorm],
+  );
+
   const counts: Record<TabKey, number> = {
     byDorm: 0, // wired in W4
     hc: allStudents.length,
     noPa: noPaStudents.length,
-    weekendInfractions: 0, // wired in W2
+    weekendInfractions: weekendRecords.length,
     activities: 0, // wired in W3
   };
 
   const rosterCount =
-    active === "hc" ? filteredStudents.length : 0;
+    active === "hc"
+      ? filteredStudents.length
+      : active === "noPa"
+        ? filteredNoPa.length
+        : active === "weekendInfractions"
+          ? weekendFiltered.length
+          : 0;
 
   return (
     <div className="cr" data-density="balanced">
@@ -619,6 +980,15 @@ export function DashboardClient({
           query={query}
           setQuery={setQuery}
           count={rosterCount}
+          filterRow={
+            active === "weekendInfractions" ? (
+              <DormChips
+                dorms={weekendDorms}
+                active={weekendDorm}
+                onSelect={setWeekendDorm}
+              />
+            ) : null
+          }
         >
           {active === "hc" ? (
             !hc.data ? (
@@ -627,6 +997,26 @@ export function DashboardClient({
               <HCTab
                 students={filteredStudents}
                 onCardClick={(s) => setDrawer({ kind: "hc", item: s })}
+              />
+            )
+          ) : active === "noPa" ? (
+            !noPa.data ? (
+              <div className="cr-empty">Loading…</div>
+            ) : (
+              <NoPaTab
+                students={filteredNoPa}
+                onCardClick={(s) => setDrawer({ kind: "noPa", item: s })}
+              />
+            )
+          ) : active === "weekendInfractions" ? (
+            !weekendInfractions.data ? (
+              <div className="cr-empty">Loading…</div>
+            ) : (
+              <InfractionsTab
+                records={weekendFiltered}
+                categories={WEEKEND_INFRACTION_CATEGORIES}
+                emptyMessage="No outstanding weekend infractions."
+                onCardClick={(e) => setDrawer({ kind: "infraction", item: e })}
               />
             )
           ) : (
