@@ -49,7 +49,9 @@ function presetRange(preset: Preset): { start: string; end: string } {
   } else if (preset === "month") {
     start.setDate(today.getDate() - 29);
   } else if (preset === "semester") {
-    // Semester window — configurable later, default ~120 days back.
+    // NEXT_PUBLIC_* values are inlined into the client bundle, so this var
+    // must remain a non-secret integer. Never store API keys or PII in
+    // NEXT_PUBLIC_ vars.
     const days = Number(process.env.NEXT_PUBLIC_SEMESTER_DAYS) || 120;
     start.setDate(today.getDate() - (days - 1));
   }
@@ -186,7 +188,7 @@ export function AnalyticsClient({ defaultStart, viewerEmail }: Props) {
           </div>
         </div>
         <div className="masthead__actions">
-          <Link href="/" className="btn btn--ghost btn--sm">
+          <Link href="/weekend" className="btn btn--ghost btn--sm">
             ← Dashboard
           </Link>
           <Link href="/live" className="btn btn--ghost btn--sm">
@@ -270,39 +272,50 @@ export function AnalyticsClient({ defaultStart, viewerEmail }: Props) {
           <div className="section__empty">Meta load failed: {metaError}</div>
         )}
 
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
-            gap: 16,
-            marginBottom: 4,
-          }}
-        >
-          <FilterChips
-            label="Categories"
-            options={meta?.categories ?? []}
-            selected={categories}
-            toggle={(v) => toggleArrayValue(categories, setCategories, v)}
-          />
-          <FilterChips
-            label="Houses"
-            options={(meta?.houses ?? []).map((h) => h.name)}
-            selected={houseIds
-              .map((id) => meta?.houses.find((h) => h.id === id)?.name)
-              .filter((v): v is string => !!v)}
-            toggle={(name) => {
-              const found = meta?.houses.find((h) => h.name === name);
-              if (!found) return;
-              toggleArrayValue(houseIds, setHouseIds, found.id);
+        <details className="analytics-filters">
+          <summary className="analytics-filters__summary">
+            Filters
+            {(categories.length || houseIds.length || yearLevels.length) > 0 ? (
+              <span className="analytics-filters__count">
+                · {categories.length + houseIds.length + yearLevels.length} active
+              </span>
+            ) : null}
+          </summary>
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+              gap: 16,
+              marginTop: 14,
+              marginBottom: 4,
             }}
-          />
-          <FilterChips
-            label="Year level"
-            options={meta?.yearLevels ?? []}
-            selected={yearLevels}
-            toggle={(v) => toggleArrayValue(yearLevels, setYearLevels, v)}
-          />
-        </div>
+          >
+            <FilterChips
+              label="Categories"
+              options={meta?.categories ?? []}
+              selected={categories}
+              toggle={(v) => toggleArrayValue(categories, setCategories, v)}
+            />
+            <FilterChips
+              label="Houses"
+              options={(meta?.houses ?? []).map((h) => h.name)}
+              selected={houseIds
+                .map((id) => meta?.houses.find((h) => h.id === id)?.name)
+                .filter((v): v is string => !!v)}
+              toggle={(name) => {
+                const found = meta?.houses.find((h) => h.name === name);
+                if (!found) return;
+                toggleArrayValue(houseIds, setHouseIds, found.id);
+              }}
+            />
+            <FilterChips
+              label="Year level"
+              options={meta?.yearLevels ?? []}
+              selected={yearLevels}
+              toggle={(v) => toggleArrayValue(yearLevels, setYearLevels, v)}
+            />
+          </div>
+        </details>
 
         {error && (
           <div
@@ -324,7 +337,6 @@ export function AnalyticsClient({ defaultStart, viewerEmail }: Props) {
             value={topCategory?.count ?? 0}
             sub={topCategory?.category ?? "—"}
           />
-          <Stat label="Categories used" value={agg.byCategory.length} />
         </section>
       )}
 

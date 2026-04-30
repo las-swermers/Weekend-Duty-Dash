@@ -4,9 +4,17 @@ import type { ReactNode } from "react";
 import "@/app/globals.css";
 
 export const metadata: Metadata = {
+  metadataBase: new URL(
+    process.env.NEXT_PUBLIC_SITE_URL ?? "https://duty.las.ch",
+  ),
   title: "LAS Duty Dashboard",
   description:
     "Dashboards for LAS Administrators on Call. Live Orah data plus a launchpad for the Google Sheets you reach for every duty rotation.",
+  robots: {
+    index: false,
+    follow: false,
+    googleBot: { index: false, follow: false },
+  },
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {

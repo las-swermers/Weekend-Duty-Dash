@@ -25,6 +25,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 
 import { auth } from "@/lib/auth";
+import { isDiagnoseAdmin } from "@/lib/diagnose-auth";
 
 const ENV_BASE =
   process.env.ORAH_BASE_URL ?? "https://open-api-ireland.orah.com";
@@ -258,6 +259,9 @@ export async function GET(req: NextRequest) {
   const session = await auth();
   if (!session) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  if (!isDiagnoseAdmin(session.user?.email)) {
+    return new NextResponse("Not Found", { status: 404 });
   }
   if (!KEY) {
     return NextResponse.json(

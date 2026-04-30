@@ -41,6 +41,14 @@ export async function GET(req: NextRequest) {
   const days = Math.max(1, Math.min(180, Number(params.get("days")) || 7));
   const limit = Math.max(1, Math.min(200, Number(params.get("limit")) || 50));
 
+  // Optional explicit window; both must parse for the override to apply.
+  const rawStart = params.get("start");
+  const rawEnd = params.get("end");
+  const startParsed = rawStart ? Date.parse(rawStart) : NaN;
+  const endParsed = rawEnd ? Date.parse(rawEnd) : NaN;
+  const explicitWindow =
+    Number.isFinite(startParsed) && Number.isFinite(endParsed);
+
   const categories = rawCategories
     .split(",")
     .map((c) => c.trim().toLowerCase())
@@ -62,12 +70,15 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    const startIso = new Date(
-      Date.now() - days * 24 * 60 * 60 * 1000,
-    ).toISOString();
+    const startIso = explicitWindow
+      ? new Date(startParsed).toISOString()
+      : new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
+    const endIso = explicitWindow
+      ? new Date(endParsed).toISOString()
+      : undefined;
 
     const [records, students, houses] = await Promise.all([
-      listPastoralTimeline(startIso, undefined, {
+      listPastoralTimeline(startIso, endIso, {
         revalidate: 60,
         pageSize: 200,
         maxPages: 80,

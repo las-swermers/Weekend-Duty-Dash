@@ -1,5 +1,6 @@
 import { LiveClient } from "@/components/live/live-client";
 import { auth } from "@/lib/auth";
+import { serveCategoriesForToday, todayRange } from "@/lib/dates";
 
 export const dynamic = "force-dynamic";
 
@@ -12,5 +13,15 @@ export default async function LivePage() {
   const userName =
     session?.user?.name ?? session?.user?.email?.split("@")[0] ?? null;
 
-  return <LiveClient userName={userName} />;
+  const today = todayRange();
+  const todayCategories = serveCategoriesForToday();
+
+  return (
+    <LiveClient
+      userName={userName}
+      todayCategories={todayCategories}
+      todayStartISO={today.start.toISOString()}
+      todayEndISO={today.end.toISOString()}
+    />
+  );
 }
