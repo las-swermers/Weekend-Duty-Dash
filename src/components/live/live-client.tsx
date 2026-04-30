@@ -436,7 +436,7 @@ function HCTab({
   const grouped = useMemo(() => {
     const m = new Map<string, HCStudent[]>();
     for (const s of students) {
-      const key = s.dorm || "—";
+      const key = s.isRestInRoom ? "Rest in Room" : s.location || "—";
       if (!m.has(key)) m.set(key, []);
       m.get(key)!.push(s);
     }
@@ -449,8 +449,13 @@ function HCTab({
     return m;
   }, [students]);
 
-  const dormKeys = useMemo(
-    () => Array.from(grouped.keys()).sort((a, b) => a.localeCompare(b)),
+  const groupKeys = useMemo(
+    () =>
+      Array.from(grouped.keys()).sort((a, b) => {
+        if (a === "Rest in Room") return 1;
+        if (b === "Rest in Room") return -1;
+        return a.localeCompare(b);
+      }),
     [grouped],
   );
 
@@ -459,14 +464,14 @@ function HCTab({
   }
 
   return (
-    <>
-      {dormKeys.map((dorm) => {
-        const list = grouped.get(dorm) ?? [];
+    <div className="cr-groups-cols">
+      {groupKeys.map((key) => {
+        const list = grouped.get(key) ?? [];
         const inNow = list.filter((s) => s.status === "in").length;
         return (
-          <div key={dorm} className="cr-dorm-group">
+          <div key={key} className="cr-dorm-group">
             <div className="cr-dorm-group__head">
-              <h3 className="cr-dorm-group__title">{dorm}</h3>
+              <h3 className="cr-dorm-group__title">{key}</h3>
               <span className="cr-dorm-group__count">
                 {list.length} · {inNow} in now
               </span>
@@ -479,7 +484,7 @@ function HCTab({
           </div>
         );
       })}
-    </>
+    </div>
   );
 }
 
@@ -586,7 +591,7 @@ function InfractionsTab({
   }
 
   return (
-    <div className="cr-serve">
+    <div className="cr-serve cr-groups-cols">
       {categories.map((cat) => {
         const list = grouped.get(cat) ?? [];
         if (list.length === 0) return null;

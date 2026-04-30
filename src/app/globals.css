@@ -1710,7 +1710,29 @@ details[open] > .analytics-filters__summary::before { content: "▾ "; }
   border-color: var(--ink);
 }
 
-/* ── Dorm group header (HC tab) ──────────────────────────────────── */
+/* ── Multi-column wrapper for groups (HC + infractions) ──────────── */
+
+.cr-groups-cols {
+  column-count: 2;
+  column-gap: 18px;
+}
+[data-density="dense"]    .cr-groups-cols { column-count: 3; column-gap: 14px; }
+[data-density="spacious"] .cr-groups-cols { column-count: 1; }
+@media (max-width: 1100px) {
+  .cr-groups-cols { column-count: 1; }
+}
+.cr-groups-cols > .cr-dorm-group,
+.cr-groups-cols > .cr-serve__group {
+  break-inside: avoid;
+  -webkit-column-break-inside: avoid;
+  page-break-inside: avoid;
+  display: block;
+  width: 100%;
+  margin-bottom: 14px;
+}
+.cr-serve.cr-groups-cols { display: block; gap: 0; }
+
+/* ── Dorm/location group header (HC tab) ─────────────────────────── */
 
 .cr-dorm-group { margin-bottom: 18px; }
 .cr-dorm-group__head {
