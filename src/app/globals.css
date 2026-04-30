@@ -1146,6 +1146,17 @@ details[open] > .cat-card__summary { border-bottom-color: var(--rule); }
   border: 1px solid var(--rule);
 }
 .cat-card__body { padding: 4px 14px 8px; }
+.cat-card__breakdown {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  padding: 6px 14px 0;
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  color: var(--ink-3);
+}
+.cat-card__breakdown-item { white-space: nowrap; }
 
 /* Per-row tick + expandable description + served meta */
 .row__check {
