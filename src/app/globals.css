@@ -1620,6 +1620,37 @@ details[open] > .analytics-filters__summary::before { content: "▾ "; }
 }
 .cr-aside::-webkit-scrollbar { width: 6px; }
 .cr-aside::-webkit-scrollbar-thumb { background: var(--rule); border-radius: 3px; }
+
+/* Sidebar Launchpad: tighter 2-col grid + Add button as full-width below */
+.cr-aside .cat-grid,
+[data-density="dense"] .cr-aside .cat-grid,
+[data-density="spacious"] .cr-aside .cat-grid {
+  grid-template-columns: repeat(2, 1fr);
+}
+.cr-aside .launchpad__add {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  margin-top: 12px;
+  padding: 10px 14px;
+  border: 1px dashed var(--rule);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ink-3);
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: background 120ms ease, border-color 120ms ease, color 120ms ease;
+}
+.cr-aside .launchpad__add:hover {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  color: var(--accent);
+}
 .cr-roster {
   display: flex;
   flex-direction: column;
