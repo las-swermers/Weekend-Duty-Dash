@@ -87,22 +87,22 @@ export function Launchpad({
             )}
           </div>
         ))}
-        {onAdd && (
-          <button
-            type="button"
-            className="tile tile--add"
-            onClick={onAdd}
-            title={
-              canAdd
-                ? "Add a launchpad link"
-                : "Launchpad writes are disabled — see env config"
-            }
-          >
-            <Icon name="plus" size={18} />
-            <div className="tile__name">Add link</div>
-          </button>
-        )}
       </div>
+      {onAdd && (
+        <button
+          type="button"
+          className="tile tile--add launchpad__add"
+          onClick={onAdd}
+          title={
+            canAdd
+              ? "Add a launchpad link"
+              : "Launchpad writes are disabled — see env config"
+          }
+        >
+          <Icon name="plus" size={16} />
+          <span className="tile__name">Add link</span>
+        </button>
+      )}
     </section>
   );
 }
