@@ -80,16 +80,30 @@ export function todayRange(now: Date = new Date()): WeekendRange {
   return { start, end };
 }
 
-// Categories whose "service" is performed on the given weekday, used by
-// the Live page's "Today's Service" section. Orah pastoral records have
-// no due-date field, so we infer from category + the calendar day.
+// Categories shown in the Live "Today's Infractions" section. Early
+// check-ins are scheduled per-day in Orah via the note's date, so the
+// base set applies every day. On Fri/Sat/Sun we additionally surface
+// that day's clipboard / dorm-night categories.
 export function serveCategoriesForToday(now: Date = new Date()): string[] {
   const day = new TZDate(now, TZ).getDay();
-  if (day === 5) return ["Friday Night in the Dorm"];
-  if (day === 6) return ["Saturday Clipboard", "Saturday Night in the Dorm"];
-  if (day === 0) return ["Sunday Clipboard"];
-  return [];
+  const base = ["1-hour early check-in", "2-hour early check-in"];
+  if (day === 5) return [...base, "Friday Night in the Dorm"];
+  if (day === 6)
+    return [...base, "Saturday Clipboard", "Saturday Night in the Dorm"];
+  if (day === 0) return [...base, "Sunday Clipboard"];
+  return base;
 }
+
+// Full set of categories rolled up across the upcoming/current weekend
+// window. Used by both Weekend dash and Live "Weekend Infractions".
+export const WEEKEND_INFRACTION_CATEGORIES = [
+  "1-hour early check-in",
+  "2-hour early check-in",
+  "Friday Night in the Dorm",
+  "Saturday Clipboard",
+  "Saturday Night in the Dorm",
+  "Sunday Clipboard",
+];
 
 // Window for the upcoming-Wednesday makeup cycle. Start is the day after
 // the most recent already-passed Wednesday (Thursday 00:00 Zurich), end is

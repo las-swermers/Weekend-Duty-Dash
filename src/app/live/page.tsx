@@ -5,6 +5,7 @@ import {
   currentWeekendRange,
   serveCategoriesForToday,
   todayRange,
+  WEEKEND_INFRACTION_CATEGORIES,
 } from "@/lib/dates";
 
 export const dynamic = "force-dynamic";
@@ -29,7 +30,10 @@ export default async function LivePage() {
       todayCategories={todayCategories}
       todayStartISO={today.start.toISOString()}
       todayEndISO={today.end.toISOString()}
+      weekendStartISO={weekend.start.toISOString()}
+      weekendEndISO={weekend.end.toISOString()}
       weekendBucketISO={weekend.start.toISOString()}
+      weekendCategories={WEEKEND_INFRACTION_CATEGORIES}
       makeupStartISO={makeup.start.toISOString()}
       makeupEndISO={makeup.end.toISOString()}
     />
