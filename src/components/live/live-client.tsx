@@ -337,6 +337,7 @@ function RosterShell({
   setQuery,
   count,
   filterRow,
+  toolbarExtras,
   children,
 }: {
   active: TabKey;
@@ -344,6 +345,7 @@ function RosterShell({
   setQuery: (s: string) => void;
   count: number;
   filterRow?: ReactNode;
+  toolbarExtras?: ReactNode;
   children: ReactNode;
 }) {
   const tab = TABS.find((t) => t.key === active)!;
@@ -368,6 +370,7 @@ function RosterShell({
               onChange={(e) => setQuery(e.target.value)}
             />
           </div>
+          {toolbarExtras}
         </div>
         {filterRow}
       </div>
@@ -385,6 +388,40 @@ function hcTagInfo(s: HCStudent): { label: string; cls: "in" | "out" | "rest" | 
   if (s.isRestInRoom) return { label: "Rest pass", cls: "rest" };
   if (s.durationMinutes >= 720) return { label: "Overnight", cls: "overnight" };
   return { label: "In HC", cls: "in" };
+}
+
+function HCRow({
+  s,
+  onClick,
+}: {
+  s: HCStudent;
+  onClick: (s: HCStudent) => void;
+}) {
+  const tag = hcTagInfo(s);
+  const detail =
+    s.isRestInRoom && s.roomNumber ? `Rest · Rm ${s.roomNumber}` : s.reason;
+  return (
+    <button type="button" className="cr-row" onClick={() => onClick(s)}>
+      <div
+        className="cr-row__photo"
+        style={{ background: photoGradient(s.name) }}
+        aria-hidden
+      >
+        {s.initials}
+      </div>
+      <div className="cr-row__name">
+        <span className="cr-row__name-main">{s.name}</span>
+        <span className="cr-row__name-sub">{s.dorm}</span>
+      </div>
+      <div className="cr-row__cell">{detail}</div>
+      <div className="cr-row__time">
+        {formatCheckIn(s.checkInISO)} · {formatDuration(s.durationMinutes)}
+      </div>
+      <span className={`cr-card__tag cr-card__tag--${tag.cls}`}>
+        {tag.label}
+      </span>
+    </button>
+  );
 }
 
 function HCCard({
@@ -429,9 +466,11 @@ function HCCard({
 function HCTab({
   students,
   onCardClick,
+  view,
 }: {
   students: HCStudent[];
   onCardClick: (s: HCStudent) => void;
+  view: "grid" | "list";
 }) {
   const grouped = useMemo(() => {
     const m = new Map<string, HCStudent[]>();
@@ -476,11 +515,19 @@ function HCTab({
                 {list.length} · {inNow} in now
               </span>
             </div>
-            <div className="cr-grid">
-              {list.map((s) => (
-                <HCCard key={s.id} s={s} onClick={onCardClick} />
-              ))}
-            </div>
+            {view === "list" ? (
+              <div className="cr-rows">
+                {list.map((s) => (
+                  <HCRow key={s.id} s={s} onClick={onCardClick} />
+                ))}
+              </div>
+            ) : (
+              <div className="cr-grid">
+                {list.map((s) => (
+                  <HCCard key={s.id} s={s} onClick={onCardClick} />
+                ))}
+              </div>
+            )}
           </div>
         );
       })}
@@ -815,7 +862,21 @@ export function LiveClient(props: Props) {
   const [query, setQuery] = useState("");
   const [todayDorm, setTodayDorm] = useState("all");
   const [weekendDorm, setWeekendDorm] = useState("all");
+  const [hcView, setHcView] = useState<"grid" | "list">("grid");
   const [drawer, setDrawer] = useState<DrawerState>(null);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const stored = window.localStorage.getItem("live.hcView");
+    if (stored === "list" || stored === "grid") setHcView(stored);
+  }, []);
+
+  const updateHcView = useCallback((next: "grid" | "list") => {
+    setHcView(next);
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem("live.hcView", next);
+    }
+  }, []);
   const [refreshing, setRefreshing] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [now, setNow] = useState<string>(() =>
@@ -972,6 +1033,26 @@ export function LiveClient(props: Props) {
           query={query}
           setQuery={setQuery}
           count={rosterCount}
+          toolbarExtras={
+            active === "hc" ? (
+              <div className="cr-view-toggle" role="tablist" aria-label="View">
+                <button
+                  type="button"
+                  className={hcView === "grid" ? "is-on" : ""}
+                  onClick={() => updateHcView("grid")}
+                >
+                  Grid
+                </button>
+                <button
+                  type="button"
+                  className={hcView === "list" ? "is-on" : ""}
+                  onClick={() => updateHcView("list")}
+                >
+                  List
+                </button>
+              </div>
+            ) : null
+          }
           filterRow={
             active === "today" ? (
               <DormChips
@@ -995,6 +1076,7 @@ export function LiveClient(props: Props) {
               <HCTab
                 students={filteredStudents}
                 onCardClick={(s) => setDrawer({ kind: "hc", item: s })}
+                view={hcView}
               />
             )
           ) : active === "today" ? (
