@@ -138,7 +138,7 @@ function dayKey(iso: string): string {
   }).format(new Date(iso));
 }
 
-type TabKey = "hc" | "today" | "weekend" | "byDorm" | "activities";
+type TabKey = "byDorm" | "hc" | "today" | "weekend" | "activities";
 
 interface Tab {
   key: TabKey;
@@ -150,6 +150,14 @@ interface Tab {
 }
 
 const TABS: Tab[] = [
+  {
+    key: "byDorm",
+    label: "Dorm",
+    titleEm: "Overview",
+    sub: "your dorm at a glance",
+    searchPlaceholder: "Search this dorm…",
+    unit: "ITEMS",
+  },
   {
     key: "hc",
     label: "Health",
@@ -173,14 +181,6 @@ const TABS: Tab[] = [
     sub: "outstanding watchlist",
     searchPlaceholder: "Search infractions…",
     unit: "ENTRIES",
-  },
-  {
-    key: "byDorm",
-    label: "By",
-    titleEm: "Dorm",
-    sub: "all live info, one dorm",
-    searchPlaceholder: "Search this dorm…",
-    unit: "ITEMS",
   },
   {
     key: "activities",
@@ -962,7 +962,7 @@ function Drawer({
 // ─── Main component ──────────────────────────────────────────────
 
 export function LiveClient(props: Props) {
-  const [active, setActive] = useState<TabKey>("hc");
+  const [active, setActive] = useState<TabKey>("byDorm");
   const [query, setQuery] = useState("");
   const [todayDorm, setTodayDorm] = useState("all");
   const [weekendDorm, setWeekendDorm] = useState("all");
