@@ -94,11 +94,12 @@ export function serveCategoriesForToday(now: Date = new Date()): string[] {
   return base;
 }
 
-// Full set of categories rolled up across the upcoming/current weekend
-// window. Used by both Weekend dash and Live "Weekend Infractions".
+// Categories that only apply on weekend duty: clipboard service and
+// dorm-night service. Early check-ins are deliberately excluded —
+// they're nightly events surfaced via serveCategoriesForToday() in
+// the Live "Today's Infractions" view, so including them here would
+// double-list the same records under "Weekend Infractions".
 export const WEEKEND_INFRACTION_CATEGORIES = [
-  "1-hour early check-in",
-  "2-hour early check-in",
   "Friday Night in the Dorm",
   "Saturday Clipboard",
   "Saturday Night in the Dorm",
