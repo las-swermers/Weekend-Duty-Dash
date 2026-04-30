@@ -24,6 +24,8 @@ interface Props {
   refreshMs?: number;
   enableTickOff?: boolean;
   bucketISO?: string;
+  collapsible?: boolean;
+  defaultCollapsed?: boolean;
 }
 
 type SortKey = "date" | "dorm";
@@ -62,6 +64,8 @@ export function PastoralCategoryGrid({
   refreshMs = 60_000,
   enableTickOff = false,
   bucketISO,
+  collapsible = false,
+  defaultCollapsed = false,
 }: Props) {
   const tickBucket = bucketISO ?? startISO;
   const url = `/api/orah/pastoral-by-category?categories=${encodeURIComponent(
@@ -198,6 +202,8 @@ export function PastoralCategoryGrid({
       titleEm={titleEm}
       sub={sub}
       meta={`${totalVisible} ENTRIES`}
+      collapsible={collapsible}
+      defaultCollapsed={defaultCollapsed}
     >
       <div className="weekend-cat-controls">
         <div className="weekend-cat-controls__group">

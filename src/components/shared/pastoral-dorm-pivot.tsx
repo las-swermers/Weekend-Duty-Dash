@@ -25,6 +25,8 @@ interface Props {
   refreshMs?: number;
   enableTickOff?: boolean;
   bucketISO?: string;
+  collapsible?: boolean;
+  defaultCollapsed?: boolean;
 }
 
 type SortKey = "count" | "name";
@@ -59,6 +61,8 @@ export function PastoralDormPivot({
   refreshMs = 60_000,
   enableTickOff = false,
   bucketISO,
+  collapsible = false,
+  defaultCollapsed = false,
 }: Props) {
   const tickBucket = bucketISO ?? startISO ?? "";
   const params = new URLSearchParams();
@@ -184,6 +188,8 @@ export function PastoralDormPivot({
       titleEm={titleEm}
       sub={sub}
       meta={`${total} ENTRIES`}
+      collapsible={collapsible}
+      defaultCollapsed={defaultCollapsed}
     >
       <div className="weekend-cat-controls">
         <div className="weekend-cat-controls__group">

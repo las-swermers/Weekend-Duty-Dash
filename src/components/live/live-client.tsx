@@ -172,11 +172,15 @@ export function LiveClient({
         titleEm="Center"
         sub="Students currently checked in."
         meta={`${hcCount} STUDENTS`}
+        collapsible
       >
         {hcCount === 0 ? (
           <EmptyState message="No students in HC right now." />
         ) : (
-          <div role="list">
+          <div
+            role="list"
+            className={hcCount > 4 ? "row-grid--two" : undefined}
+          >
             {(hc.data?.students ?? []).map((s) => (
               <div className="row" key={s.id} role="listitem">
                 <div className="row__initials">{s.initials}</div>
@@ -216,6 +220,7 @@ export function LiveClient({
           endISO={todayEndISO}
           enableTickOff
           bucketISO={weekendBucketISO}
+          collapsible
         />
       ) : (
         <SectionShell
@@ -225,6 +230,7 @@ export function LiveClient({
           titleEm="Service"
           sub="Weekday — clipboards & dorm-night service resume Friday."
           meta="0 ENTRIES"
+          collapsible
         >
           <EmptyState message="No service due today." />
         </SectionShell>
@@ -245,6 +251,7 @@ export function LiveClient({
           "Uniform violation",
         ]}
         days={1}
+        collapsible
       />
 
       <PastoralDormPivot
@@ -259,6 +266,7 @@ export function LiveClient({
         endISO={makeupEndISO}
         enableTickOff
         bucketISO={makeupStartISO}
+        collapsible
       />
 
       <PastoralDormPivot
@@ -273,6 +281,7 @@ export function LiveClient({
         endISO={makeupEndISO}
         enableTickOff
         bucketISO={makeupStartISO}
+        collapsible
       />
 
       <SectionShell
@@ -286,13 +295,21 @@ export function LiveClient({
             : "Configure DORM_NOTES_CATEGORY_NAME to enable."
         }
         meta={`${dormNotes.data?.notes.length ?? 0} NOTES`}
+        collapsible
       >
         {!dormNotes.data?.configured ? (
           <EmptyState message="Set DORM_NOTES_CATEGORY_NAME to the Orah pastoral category used for nightly dorm notes." />
         ) : (dormNotes.data?.notes.length ?? 0) === 0 ? (
           <EmptyState message="No dorm notes recorded last night." />
         ) : (
-          <div role="list">
+          <div
+            role="list"
+            className={
+              (dormNotes.data?.notes.length ?? 0) > 4
+                ? "row-grid--two"
+                : undefined
+            }
+          >
             {(dormNotes.data?.notes ?? []).map((n) => (
               <div className="row" key={n.id} role="listitem">
                 <div className="row__initials">{n.studentInitials}</div>
