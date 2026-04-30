@@ -27,6 +27,7 @@ interface Props {
   bucketISO?: string;
   collapsible?: boolean;
   defaultCollapsed?: boolean;
+  watchlistOnly?: boolean;
 }
 
 type SortKey = "count" | "name";
@@ -63,11 +64,14 @@ export function PastoralDormPivot({
   bucketISO,
   collapsible = false,
   defaultCollapsed = false,
+  watchlistOnly = false,
 }: Props) {
   const tickBucket = bucketISO ?? startISO ?? "";
   const params = new URLSearchParams();
   params.set("categories", categories.join(","));
-  if (startISO && endISO) {
+  if (watchlistOnly) {
+    params.set("watchlist", "1");
+  } else if (startISO && endISO) {
     params.set("start", startISO);
     params.set("end", endISO);
   } else if (days) {

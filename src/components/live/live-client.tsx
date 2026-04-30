@@ -15,14 +15,7 @@ import { signOutAction } from "@/lib/auth-actions";
 interface Props {
   userName: string | null;
   todayCategories: string[];
-  todayStartISO: string;
-  todayEndISO: string;
-  weekendStartISO: string;
-  weekendEndISO: string;
-  weekendBucketISO: string;
   weekendCategories: string[];
-  makeupStartISO: string;
-  makeupEndISO: string;
 }
 
 const fetcher = async <T,>(url: string): Promise<T> => {
@@ -166,14 +159,7 @@ function HCRoster({ students }: { students: HCStudent[] }) {
 export function LiveClient({
   userName,
   todayCategories,
-  todayStartISO,
-  todayEndISO,
-  weekendStartISO,
-  weekendEndISO,
-  weekendBucketISO,
   weekendCategories,
-  makeupStartISO,
-  makeupEndISO,
 }: Props) {
   const hc = useSWR<{ students: HCStudent[] }>(
     "/api/orah/health-center-live",
@@ -281,13 +267,10 @@ export function LiveClient({
         num="02"
         title="Today's"
         titleEm="Infractions"
-        sub="Early check-ins and any clipboard / dorm-night entries dated today."
-        emptyMessage="No infractions to serve today."
+        sub="Watchlisted early check-ins (and weekend service entries on Fri/Sat/Sun). Rolls over until cleared in Orah."
+        emptyMessage="No outstanding infractions to serve today."
         categories={todayCategories}
-        startISO={todayStartISO}
-        endISO={todayEndISO}
-        enableTickOff
-        bucketISO={weekendBucketISO}
+        watchlistOnly
         collapsible
       />
 
@@ -296,13 +279,10 @@ export function LiveClient({
         num="03"
         title="Weekend"
         titleEm="Infractions"
-        sub="Rolling preview of every infraction logged for the upcoming weekend."
-        emptyMessage="No weekend infractions logged yet."
+        sub="Watchlisted clipboard, dorm-night, and early check-in entries. Rolls over until cleared in Orah."
+        emptyMessage="No outstanding weekend infractions."
         categories={weekendCategories}
-        startISO={weekendStartISO}
-        endISO={weekendEndISO}
-        enableTickOff
-        bucketISO={weekendBucketISO}
+        watchlistOnly
         collapsible
       />
 
@@ -329,13 +309,10 @@ export function LiveClient({
         num="05"
         title="Wednesday"
         titleEm="Catch-up"
-        sub="Catch-up entries logged for the upcoming Wednesday, grouped by dorm. Resets every Wednesday at midnight."
-        emptyMessage="No Wednesday catch-up logged this cycle."
+        sub="Watchlisted catch-up entries, grouped by dorm. Rolls over until cleared in Orah."
+        emptyMessage="No outstanding Wednesday catch-up."
         categories={["Wednesday morning catch-up"]}
-        startISO={makeupStartISO}
-        endISO={makeupEndISO}
-        enableTickOff
-        bucketISO={makeupStartISO}
+        watchlistOnly
         collapsible
       />
 
@@ -344,13 +321,10 @@ export function LiveClient({
         num="06"
         title="Wednesday"
         titleEm="Make-up Activity"
-        sub="Make-up activity entries logged for the upcoming Wednesday, grouped by dorm. Resets every Wednesday at midnight."
-        emptyMessage="No Wednesday make-up activity logged this cycle."
+        sub="Watchlisted make-up activity entries, grouped by dorm. Rolls over until cleared in Orah."
+        emptyMessage="No outstanding Wednesday make-up activity."
         categories={["Wednesday make-up activity"]}
-        startISO={makeupStartISO}
-        endISO={makeupEndISO}
-        enableTickOff
-        bucketISO={makeupStartISO}
+        watchlistOnly
         collapsible
       />
 

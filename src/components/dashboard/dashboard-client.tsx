@@ -183,8 +183,8 @@ export function DashboardClient({
         num="03"
         title="To Serve"
         titleEm="This Weekend"
-        sub="Clipboards, dorm-night restrictions, and early check-ins for the upcoming weekend."
-        emptyMessage="No infractions logged for this weekend yet."
+        sub="Watchlisted clipboards, dorm-night restrictions, and early check-ins. Rolls over until cleared in Orah."
+        emptyMessage="No outstanding infractions on the watchlist."
         categories={[
           "Saturday Clipboard",
           "Sunday Clipboard",
@@ -193,9 +193,7 @@ export function DashboardClient({
           "1-hour early check-in",
           "2-hour early check-in",
         ]}
-        startISO={weekendRange.startISO}
-        endISO={weekendRange.endISO}
-        enableTickOff
+        watchlistOnly
       />
 
       <ActivitiesCalendar

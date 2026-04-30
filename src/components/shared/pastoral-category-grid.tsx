@@ -18,14 +18,17 @@ interface Props {
   sub: string;
   emptyMessage: string;
   categories: string[];
-  startISO: string;
-  endISO: string;
+  // When watchlistOnly is true, startISO/endISO are ignored — the API
+  // applies its own long lookback so watchlist items roll over.
+  startISO?: string;
+  endISO?: string;
   limit?: number;
   refreshMs?: number;
   enableTickOff?: boolean;
   bucketISO?: string;
   collapsible?: boolean;
   defaultCollapsed?: boolean;
+  watchlistOnly?: boolean;
 }
 
 type SortKey = "date" | "dorm";
@@ -66,13 +69,20 @@ export function PastoralCategoryGrid({
   bucketISO,
   collapsible = false,
   defaultCollapsed = false,
+  watchlistOnly = false,
 }: Props) {
-  const tickBucket = bucketISO ?? startISO;
-  const url = `/api/orah/pastoral-by-category?categories=${encodeURIComponent(
-    categories.join(","),
-  )}&start=${encodeURIComponent(startISO)}&end=${encodeURIComponent(
-    endISO,
-  )}&limit=${limit}`;
+  const tickBucket = bucketISO ?? startISO ?? "";
+  const params = new URLSearchParams({
+    categories: categories.join(","),
+    limit: String(limit),
+  });
+  if (watchlistOnly) {
+    params.set("watchlist", "1");
+  } else if (startISO && endISO) {
+    params.set("start", startISO);
+    params.set("end", endISO);
+  }
+  const url = `/api/orah/pastoral-by-category?${params.toString()}`;
 
   const { data } = useSWR<{ records: PastoralEntry[] }>(url, fetcher, {
     refreshInterval: refreshMs,
