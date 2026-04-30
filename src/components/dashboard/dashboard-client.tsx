@@ -713,6 +713,103 @@ function InfractionsTab({
   );
 }
 
+// ─── By Dorm tab ─────────────────────────────────────────────────
+
+function ByDormTab({
+  dorm,
+  hcStudents,
+  noPaStudents,
+  weekendRecords,
+  servedMap,
+  onHcClick,
+  onNoPaClick,
+  onInfClick,
+  onToggleServed,
+}: {
+  dorm: string;
+  hcStudents: HCStudent[];
+  noPaStudents: NoPaStudent[];
+  weekendRecords: PastoralEntry[];
+  servedMap: Map<number, ServedEntry>;
+  onHcClick: (s: HCStudent) => void;
+  onNoPaClick: (s: NoPaStudent) => void;
+  onInfClick: (e: PastoralEntry) => void;
+  onToggleServed: (entry: PastoralEntry, currentlyServed: boolean) => void;
+}) {
+  if (!dorm) {
+    return <div className="cr-empty">Pick a dorm above to view its roster.</div>;
+  }
+  const total =
+    hcStudents.length + noPaStudents.length + weekendRecords.length;
+  if (total === 0) {
+    return <div className="cr-empty">Nothing flagged for {dorm}.</div>;
+  }
+  const overnight = hcStudents.filter((s) => s.status === "overnight").length;
+  return (
+    <div className="cr-groups-cols">
+      <div className="cr-dorm-group">
+        <div className="cr-dorm-group__head">
+          <h3 className="cr-dorm-group__title">Health Center</h3>
+          <span className="cr-dorm-group__count">
+            {hcStudents.length}
+            {overnight > 0 ? ` · ${overnight} overnight` : ""}
+          </span>
+        </div>
+        {hcStudents.length === 0 ? (
+          <div className="cr-empty">None</div>
+        ) : (
+          <div className="cr-grid">
+            {hcStudents.map((s) => (
+              <HCCard key={s.id} s={s} onClick={onHcClick} />
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div className="cr-dorm-group">
+        <div className="cr-dorm-group__head">
+          <h3 className="cr-dorm-group__title">No Phys. Activity</h3>
+          <span className="cr-dorm-group__count">{noPaStudents.length}</span>
+        </div>
+        {noPaStudents.length === 0 ? (
+          <div className="cr-empty">None</div>
+        ) : (
+          <div className="cr-grid">
+            {noPaStudents.map((s) => (
+              <NoPaCard key={s.id} s={s} onClick={onNoPaClick} />
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div className="cr-dorm-group">
+        <div className="cr-dorm-group__head">
+          <h3 className="cr-dorm-group__title">Weekend Infractions</h3>
+          <span className="cr-dorm-group__count">
+            {weekendRecords.length}{" "}
+            {weekendRecords.length === 1 ? "entry" : "entries"}
+          </span>
+        </div>
+        {weekendRecords.length === 0 ? (
+          <div className="cr-empty">None</div>
+        ) : (
+          <div className="cr-serve__group-body">
+            {weekendRecords.map((e) => (
+              <ServeCard
+                key={e.id}
+                entry={e}
+                onClick={onInfClick}
+                served={servedMap.get(e.id)}
+                onToggleServed={onToggleServed}
+              />
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ─── Activities tab ──────────────────────────────────────────────
 
 function dayKey(iso: string): string {
@@ -913,7 +1010,21 @@ export function DashboardClient({
   const [active, setActive] = useState<TabKey>("byDorm");
   const [query, setQuery] = useState("");
   const [weekendDorm, setWeekendDorm] = useState("all");
+  const [byDorm, setByDorm] = useState<string>("");
   const [drawer, setDrawer] = useState<DrawerState>(null);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const stored = window.localStorage.getItem("weekend.byDorm");
+    if (stored) setByDorm(stored);
+  }, []);
+
+  const updateByDorm = useCallback((next: string) => {
+    setByDorm(next);
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem("weekend.byDorm", next);
+    }
+  }, []);
   const [refreshing, setRefreshing] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [lastUpdated, setLastUpdated] = useState("just now");
@@ -1143,6 +1254,49 @@ export function DashboardClient({
     [weekendRecords, query, weekendDorm],
   );
 
+  const allDorms = useMemo(() => {
+    const set = new Set<string>();
+    for (const s of allStudents) if (s.dorm) set.add(s.dorm);
+    for (const s of noPaStudents) if (s.dorm) set.add(s.dorm);
+    for (const r of weekendRecords) if (r.dorm) set.add(r.dorm);
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [allStudents, noPaStudents, weekendRecords]);
+
+  const effectiveByDorm = byDorm || allDorms[0] || "";
+
+  const byDormHc = useMemo(() => {
+    if (!effectiveByDorm) return [];
+    let list = allStudents.filter((s) => s.dorm === effectiveByDorm);
+    const q = query.trim().toLowerCase();
+    if (q) {
+      list = list.filter((s) =>
+        [s.name, s.initials, s.location, s.reason]
+          .filter(Boolean)
+          .some((v) => String(v).toLowerCase().includes(q)),
+      );
+    }
+    return list;
+  }, [allStudents, effectiveByDorm, query]);
+
+  const byDormNoPa = useMemo(() => {
+    if (!effectiveByDorm) return [];
+    let list = noPaStudents.filter((s) => s.dorm === effectiveByDorm);
+    const q = query.trim().toLowerCase();
+    if (q) {
+      list = list.filter((s) =>
+        [s.name, s.initials, s.restriction, s.until]
+          .filter(Boolean)
+          .some((v) => String(v).toLowerCase().includes(q)),
+      );
+    }
+    return list;
+  }, [noPaStudents, effectiveByDorm, query]);
+
+  const byDormWeekend = useMemo(
+    () => filterInfractions(weekendRecords, query, effectiveByDorm),
+    [weekendRecords, query, effectiveByDorm],
+  );
+
   const events = activities.data?.events ?? [];
   const filteredEvents = useMemo(() => {
     if (active !== "activities" || !query.trim()) return events;
@@ -1154,8 +1308,11 @@ export function DashboardClient({
     );
   }, [active, events, query]);
 
+  const byDormStatCount =
+    byDormHc.length + byDormNoPa.length + byDormWeekend.length;
+
   const counts: Record<TabKey, number> = {
-    byDorm: 0, // wired in W4
+    byDorm: byDormStatCount,
     hc: allStudents.length,
     noPa: noPaStudents.length,
     weekendInfractions: weekendRecords.length,
@@ -1163,15 +1320,17 @@ export function DashboardClient({
   };
 
   const rosterCount =
-    active === "hc"
-      ? filteredStudents.length
-      : active === "noPa"
-        ? filteredNoPa.length
-        : active === "weekendInfractions"
-          ? weekendFiltered.length
-          : active === "activities"
-            ? filteredEvents.length
-            : 0;
+    active === "byDorm"
+      ? byDormStatCount
+      : active === "hc"
+        ? filteredStudents.length
+        : active === "noPa"
+          ? filteredNoPa.length
+          : active === "weekendInfractions"
+            ? weekendFiltered.length
+            : active === "activities"
+              ? filteredEvents.length
+              : 0;
 
   return (
     <div className="cr" data-density="balanced">
@@ -1188,7 +1347,7 @@ export function DashboardClient({
         active={active}
         onSelect={setActive}
         counts={counts}
-        byDormLabel=""
+        byDormLabel={effectiveByDorm}
       />
       <div className="cr-main cr-main--with-aside">
         <RosterShell
@@ -1203,10 +1362,34 @@ export function DashboardClient({
                 active={weekendDorm}
                 onSelect={setWeekendDorm}
               />
+            ) : active === "byDorm" ? (
+              <DormChips
+                dorms={allDorms}
+                active={effectiveByDorm}
+                onSelect={updateByDorm}
+                hideAll
+                label="Pick dorm"
+              />
             ) : null
           }
         >
-          {active === "hc" ? (
+          {active === "byDorm" ? (
+            !hc.data || !noPa.data || !weekendInfractions.data ? (
+              <div className="cr-empty">Loading…</div>
+            ) : (
+              <ByDormTab
+                dorm={effectiveByDorm}
+                hcStudents={byDormHc}
+                noPaStudents={byDormNoPa}
+                weekendRecords={byDormWeekend}
+                servedMap={servedMap}
+                onHcClick={(s) => setDrawer({ kind: "hc", item: s })}
+                onNoPaClick={(s) => setDrawer({ kind: "noPa", item: s })}
+                onInfClick={(e) => setDrawer({ kind: "infraction", item: e })}
+                onToggleServed={handleToggleServed}
+              />
+            )
+          ) : active === "hc" ? (
             !hc.data ? (
               <div className="cr-empty">Loading…</div>
             ) : (
