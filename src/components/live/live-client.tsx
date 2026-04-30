@@ -7,6 +7,7 @@ import useSWR from "swr";
 import { Icon, LASCrest } from "@/components/dashboard/icon";
 import { EmptyState, SectionShell } from "@/components/dashboard/sections";
 import { Toast } from "@/components/dashboard/toast";
+import { ActivitiesCalendar } from "@/components/shared/activities-calendar";
 import { PastoralCategoryGrid } from "@/components/shared/pastoral-category-grid";
 import { PastoralDormPivot } from "@/components/shared/pastoral-dorm-pivot";
 import { signOutAction } from "@/lib/auth-actions";
@@ -331,6 +332,16 @@ export function LiveClient({
           </div>
         )}
       </SectionShell>
+
+      <ActivitiesCalendar
+        id="live-calendar"
+        num="07"
+        title="Activities"
+        titleEm="Calendar"
+        sub="Upcoming events from the activities office calendar."
+        days={3}
+        collapsible
+      />
 
       <footer className="colophon">
         <div>LAS · 1854 Leysin · Internal tool</div>

@@ -355,6 +355,33 @@ a { color: inherit; }
 }
 .section__collapse:hover { color: var(--ink); }
 
+.cal-day {
+  display: contents;
+}
+.cal-day__header {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  color: var(--ink-4);
+  text-transform: uppercase;
+  padding: 14px 0 4px;
+  border-top: 1px solid var(--ink-2);
+}
+.cal-day:first-of-type .cal-day__header { border-top: none; }
+.cal-row__time {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  color: var(--ink-3);
+}
+.cal-row__desc {
+  display: -webkit-box;
+  -webkit-line-clamp: 1;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  max-width: 360px;
+}
+
 .section__sub {
   grid-column: 2 / -1;
   font-size: 13px;

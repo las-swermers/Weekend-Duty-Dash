@@ -12,6 +12,7 @@ import { AlertSummary } from "@/components/dashboard/alert-summary";
 import { Launchpad } from "@/components/dashboard/launchpad";
 import { Masthead } from "@/components/dashboard/masthead";
 import { HCSection, NoPaSection } from "@/components/dashboard/sections";
+import { ActivitiesCalendar } from "@/components/shared/activities-calendar";
 import { PastoralCategoryGrid } from "@/components/shared/pastoral-category-grid";
 import { Toast } from "@/components/dashboard/toast";
 import type { HCStudent, NoPaStudent } from "@/lib/mock";
@@ -195,6 +196,17 @@ export function DashboardClient({
         startISO={weekendRange.startISO}
         endISO={weekendRange.endISO}
         enableTickOff
+      />
+
+      <ActivitiesCalendar
+        id="weekend-calendar"
+        num="04"
+        title="Activities"
+        titleEm="Calendar"
+        sub="Trips and events scheduled for this weekend."
+        startISO={weekendRange.startISO}
+        endISO={weekendRange.endISO}
+        collapsible
       />
 
       <Launchpad
