@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { PastoralCharts } from "@/components/analytics/charts";
+import { ResolutionPanel } from "@/components/analytics/resolution-panel";
 import type {
   PastoralFilters,
   PastoralMeta,
@@ -368,6 +369,11 @@ export function AnalyticsClient({ defaultStart, viewerEmail }: Props) {
           </div>
         </section>
       )}
+
+      <ResolutionPanel
+        startISO={fromDateInput(startDate)}
+        endISO={fromDateInput(endDate, true)}
+      />
     </div>
   );
 }

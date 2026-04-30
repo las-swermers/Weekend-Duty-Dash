@@ -91,6 +91,21 @@ export function serveCategoriesForToday(now: Date = new Date()): string[] {
   return [];
 }
 
+// Window for the upcoming-Wednesday makeup cycle. Start is the day after
+// the most recent already-passed Wednesday (Thursday 00:00 Zurich), end is
+// now. After Wed 23:59:59 the cycle resets, so Thursday morning shows only
+// Thursday's entries — Tuesday's entries (which referred to the makeup
+// that already happened) are dropped.
+export function currentMakeupWindow(now: Date = new Date()): WeekendRange {
+  const local = new TZDate(now, TZ);
+  const day = local.getDay(); // 0 Sun … 3 Wed … 6 Sat
+  const daysBack = day === 3 ? 7 : (day - 3 + 7) % 7;
+  const start = new TZDate(local, TZ);
+  start.setDate(local.getDate() - daysBack + 1);
+  start.setHours(0, 0, 0, 0);
+  return { start, end: local };
+}
+
 // "May 1–3, 2026" style label for emails / headers.
 export function formatWeekendLabel(range: WeekendRange): string {
   const fmt = new Intl.DateTimeFormat("en-GB", {

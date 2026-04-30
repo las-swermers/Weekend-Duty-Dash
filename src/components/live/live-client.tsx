@@ -8,7 +8,7 @@ import { Icon, LASCrest } from "@/components/dashboard/icon";
 import { EmptyState, SectionShell } from "@/components/dashboard/sections";
 import { Toast } from "@/components/dashboard/toast";
 import { PastoralCategoryGrid } from "@/components/shared/pastoral-category-grid";
-import { PastoralFeedSection } from "@/components/shared/pastoral-feed-section";
+import { PastoralDormPivot } from "@/components/shared/pastoral-dorm-pivot";
 import { signOutAction } from "@/lib/auth-actions";
 
 interface Props {
@@ -16,6 +16,9 @@ interface Props {
   todayCategories: string[];
   todayStartISO: string;
   todayEndISO: string;
+  weekendBucketISO: string;
+  makeupStartISO: string;
+  makeupEndISO: string;
 }
 
 const fetcher = async <T,>(url: string): Promise<T> => {
@@ -73,6 +76,9 @@ export function LiveClient({
   todayCategories,
   todayStartISO,
   todayEndISO,
+  weekendBucketISO,
+  makeupStartISO,
+  makeupEndISO,
 }: Props) {
   const hc = useSWR<{ students: HCStudent[] }>(
     "/api/orah/health-center-live",
@@ -208,6 +214,8 @@ export function LiveClient({
           categories={todayCategories}
           startISO={todayStartISO}
           endISO={todayEndISO}
+          enableTickOff
+          bucketISO={weekendBucketISO}
         />
       ) : (
         <SectionShell
@@ -222,12 +230,12 @@ export function LiveClient({
         </SectionShell>
       )}
 
-      <PastoralFeedSection
+      <PastoralDormPivot
         id="live-24h"
         num="03"
-        title="Last"
-        titleEm="24 Hours"
-        sub="Discipline, concerns, early check-ins, and uniform violations from the past day."
+        title="Infractions"
+        titleEm="Last 24 Hours"
+        sub="Discipline, concerns, early check-ins, and uniform violations from the past day, grouped by dorm."
         emptyMessage="Nothing logged in the last 24 hours."
         categories={[
           "Phone violation",
@@ -239,23 +247,37 @@ export function LiveClient({
         days={1}
       />
 
-      <PastoralFeedSection
-        id="live-wednesday"
+      <PastoralDormPivot
+        id="live-wednesday-catchup"
         num="04"
         title="Wednesday"
-        titleEm="Catch-up & Make-up"
-        sub="Wednesday morning catch-up and Wednesday make-up activity from the past week."
-        emptyMessage="No Wednesday catch-up or make-up activity logged."
-        categories={[
-          "Wednesday morning catch-up",
-          "Wednesday make-up activity",
-        ]}
-        days={7}
+        titleEm="Catch-up"
+        sub="Catch-up entries logged for the upcoming Wednesday, grouped by dorm. Resets every Wednesday at midnight."
+        emptyMessage="No Wednesday catch-up logged this cycle."
+        categories={["Wednesday morning catch-up"]}
+        startISO={makeupStartISO}
+        endISO={makeupEndISO}
+        enableTickOff
+        bucketISO={makeupStartISO}
+      />
+
+      <PastoralDormPivot
+        id="live-wednesday-makeup"
+        num="05"
+        title="Wednesday"
+        titleEm="Make-up Activity"
+        sub="Make-up activity entries logged for the upcoming Wednesday, grouped by dorm. Resets every Wednesday at midnight."
+        emptyMessage="No Wednesday make-up activity logged this cycle."
+        categories={["Wednesday make-up activity"]}
+        startISO={makeupStartISO}
+        endISO={makeupEndISO}
+        enableTickOff
+        bucketISO={makeupStartISO}
       />
 
       <SectionShell
         id="live-dorm-notes"
-        num="05"
+        num="06"
         title="Last Night"
         titleEm="Dorm Notes"
         sub={
