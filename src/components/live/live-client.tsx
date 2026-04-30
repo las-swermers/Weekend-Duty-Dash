@@ -230,7 +230,7 @@ function TopBar({
         </span>
         {userName && (
           <span>
-            AOC · <strong>{userName}</strong>
+            Welcome <strong>{userName}</strong>
           </span>
         )}
       </div>
