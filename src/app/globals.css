@@ -1379,6 +1379,7 @@ details[open] > .analytics-filters__summary::before { content: "▾ "; }
 
 .cr {
   height: 100vh;
+  height: 100dvh; /* dynamic viewport unit — works under iOS Safari URL bar */
   display: grid;
   grid-template-rows: auto auto auto 1fr;
   gap: 0;
@@ -2304,19 +2305,111 @@ details[open] > .analytics-filters__summary::before { content: "▾ "; }
 
 /* ── Responsive ──────────────────────────────────────────────────── */
 
+/* ── Mobile pass ─────────────────────────────────────────────────
+   Phones get a single-column layout where the page itself can
+   scroll (drop the fixed-height shell), the stats strip becomes a
+   horizontally-scrolling tab bar instead of stacking vertically,
+   and touch targets bump up to ~44px. */
+
 @media (max-width: 920px) {
-  .cr { height: auto; min-height: 100vh; grid-template-rows: auto auto auto auto; }
+  .cr {
+    height: auto;
+    min-height: 100dvh;
+    grid-template-rows: auto auto auto auto;
+    padding: 12px 14px 16px;
+  }
+  .cr-main { overflow: visible; }
   .cr-main--with-aside { grid-template-columns: 1fr; }
-  .cr-aside { border-left: none; border-top: 1px solid var(--rule); padding-left: 0; padding-top: 14px; }
-  .cr-stats { grid-template-columns: 1fr 1fr; }
-  .cr-stat:nth-child(2) { border-right: none; }
-  .cr-stat:nth-child(-n+2) { border-bottom: 1px solid var(--rule); }
-  .cr-roster__head { grid-template-columns: 1fr; gap: 10px; }
+  .cr-aside {
+    border-left: none;
+    border-top: 1px solid var(--rule);
+    padding-left: 0;
+    padding-top: 14px;
+    margin-top: 14px;
+    overflow: visible;
+  }
+  .cr-roster {
+    overflow: visible;
+  }
+  .cr-roster__body {
+    overflow: visible;
+    padding: 14px 0;
+  }
+  .cr-roster__head {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
   .cr-search { width: 100%; }
   .cr-drawer { width: 100%; }
+
+  /* Stats strip → horizontal scroll-snap tab bar */
+  .cr-stats {
+    grid-template-columns: none;
+    display: flex;
+    overflow-x: auto;
+    scroll-snap-type: x proximity;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    border-bottom: 1px solid var(--rule);
+  }
+  .cr-stats::-webkit-scrollbar { display: none; }
+  .cr-stat {
+    flex: 0 0 auto;
+    min-width: 200px;
+    scroll-snap-align: start;
+    padding: 12px 16px;
+    border-right: 1px solid var(--rule);
+    border-bottom: none;
+  }
+  .cr-stat:last-child { border-right: none; }
+  .cr-stat__num { font-size: 30px; }
+  .cr-stat__label { font-size: 12px; }
+  .cr-stat__sub { font-size: 11px; }
+
+  /* Top bar wraps cleanly on phones */
+  .cr-bar {
+    grid-template-columns: 1fr auto;
+    grid-template-areas:
+      "brand actions"
+      "meta meta";
+    row-gap: 8px;
+    padding: 8px 4px 10px;
+  }
+  .cr-bar__brand { grid-area: brand; }
+  .cr-bar__actions { grid-area: actions; flex-wrap: wrap; gap: 4px; }
+  .cr-bar__meta {
+    grid-area: meta;
+    flex-wrap: wrap;
+    gap: 8px 12px;
+    font-size: 11px;
+  }
+  .cr-bar__title { font-size: 16px; }
+  .cr-bar__subtitle { font-size: 10px; }
+
+  /* Touch targets */
+  .cr-dorm-chip {
+    min-height: 32px;
+    padding: 6px 12px;
+    font-size: 11.5px;
+  }
+  .cr-view-toggle button {
+    min-height: 32px;
+    padding: 6px 14px;
+  }
+
+  /* Single-column for groups instead of forcing column-count */
+  .cr-groups-cols { column-count: 1; }
 }
+
 @media (max-width: 640px) {
-  .cr-stats { grid-template-columns: 1fr; }
-  .cr-stat { border-right: none; border-bottom: 1px solid var(--rule); }
-  .cr-stat:last-child { border-bottom: none; }
+  .cr-stat { min-width: 170px; }
+  .cr-bar__meta { font-size: 10.5px; }
+  .cr-grid { grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); }
+  .cr-serve__group-body { grid-template-columns: 1fr; }
+  .cr-cal-row { grid-template-columns: 80px 1fr; gap: 10px; }
+  .cr-drawer__head {
+    grid-template-columns: 64px 1fr auto;
+    gap: 12px;
+  }
+  .cr-drawer__photo { width: 64px; height: 64px; font-size: 24px; }
 }
