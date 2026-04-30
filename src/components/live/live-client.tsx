@@ -138,7 +138,7 @@ function dayKey(iso: string): string {
   }).format(new Date(iso));
 }
 
-type TabKey = "hc" | "today" | "weekend" | "activities";
+type TabKey = "hc" | "today" | "weekend" | "byDorm" | "activities";
 
 interface Tab {
   key: TabKey;
@@ -173,6 +173,14 @@ const TABS: Tab[] = [
     sub: "outstanding watchlist",
     searchPlaceholder: "Search infractions…",
     unit: "ENTRIES",
+  },
+  {
+    key: "byDorm",
+    label: "By",
+    titleEm: "Dorm",
+    sub: "all live info, one dorm",
+    searchPlaceholder: "Search this dorm…",
+    unit: "ITEMS",
   },
   {
     key: "activities",
@@ -294,10 +302,12 @@ function StatsStrip({
   active,
   onSelect,
   counts,
+  byDormLabel,
 }: {
   active: TabKey;
   onSelect: (k: TabKey) => void;
   counts: Record<TabKey, number>;
+  byDormLabel: string;
 }) {
   return (
     <div className="cr-stats" role="tablist">
@@ -305,6 +315,7 @@ function StatsStrip({
         const n = counts[t.key];
         const sev = severity(n);
         const isActive = active === t.key;
+        const sub = t.key === "byDorm" && byDormLabel ? byDormLabel : t.sub;
         return (
           <button
             key={t.key}
@@ -319,7 +330,7 @@ function StatsStrip({
               <div className="cr-stat__label">
                 {t.label} {t.titleEm}
               </div>
-              <div className="cr-stat__sub">{t.sub}</div>
+              <div className="cr-stat__sub">{sub}</div>
             </div>
             <div className="cr-stat__num">{String(n).padStart(2, "0")}</div>
           </button>
@@ -576,22 +587,28 @@ function DormChips({
   dorms,
   active,
   onSelect,
+  hideAll = false,
+  label = "Dorm",
 }: {
   dorms: string[];
   active: string;
   onSelect: (dorm: string) => void;
+  hideAll?: boolean;
+  label?: string;
 }) {
   if (dorms.length === 0) return null;
   return (
     <div className="cr-dorm-chips">
-      <span className="cr-dorm-chips__label">Dorm</span>
-      <button
-        type="button"
-        className={`cr-dorm-chip${active === "all" ? " is-on" : ""}`}
-        onClick={() => onSelect("all")}
-      >
-        All
-      </button>
+      <span className="cr-dorm-chips__label">{label}</span>
+      {!hideAll && (
+        <button
+          type="button"
+          className={`cr-dorm-chip${active === "all" ? " is-on" : ""}`}
+          onClick={() => onSelect("all")}
+        >
+          All
+        </button>
+      )}
       {dorms.map((d) => (
         <button
           key={d}
@@ -684,6 +701,93 @@ function filterInfractions(
     );
   }
   return out;
+}
+
+// ─── By Dorm tab ─────────────────────────────────────────────────
+
+function ByDormTab({
+  dorm,
+  hcStudents,
+  todayRecords,
+  weekendRecords,
+  onHcClick,
+  onInfClick,
+}: {
+  dorm: string;
+  hcStudents: HCStudent[];
+  todayRecords: PastoralEntry[];
+  weekendRecords: PastoralEntry[];
+  onHcClick: (s: HCStudent) => void;
+  onInfClick: (e: PastoralEntry) => void;
+}) {
+  if (!dorm) {
+    return <div className="cr-empty">Pick a dorm above to view its roster.</div>;
+  }
+  const total = hcStudents.length + todayRecords.length + weekendRecords.length;
+  if (total === 0) {
+    return <div className="cr-empty">Nothing flagged for {dorm}.</div>;
+  }
+  const inNow = hcStudents.filter((s) => s.status === "in").length;
+
+  return (
+    <div className="cr-groups-cols">
+      <div className="cr-dorm-group">
+        <div className="cr-dorm-group__head">
+          <h3 className="cr-dorm-group__title">Health Center</h3>
+          <span className="cr-dorm-group__count">
+            {hcStudents.length} · {inNow} in now
+          </span>
+        </div>
+        {hcStudents.length === 0 ? (
+          <div className="cr-empty">None</div>
+        ) : (
+          <div className="cr-grid">
+            {hcStudents.map((s) => (
+              <HCCard key={s.id} s={s} onClick={onHcClick} />
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div className="cr-dorm-group">
+        <div className="cr-dorm-group__head">
+          <h3 className="cr-dorm-group__title">Today's Infractions</h3>
+          <span className="cr-dorm-group__count">
+            {todayRecords.length}{" "}
+            {todayRecords.length === 1 ? "entry" : "entries"}
+          </span>
+        </div>
+        {todayRecords.length === 0 ? (
+          <div className="cr-empty">None</div>
+        ) : (
+          <div className="cr-serve__group-body">
+            {todayRecords.map((e) => (
+              <ServeCard key={e.id} entry={e} onClick={onInfClick} />
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div className="cr-dorm-group">
+        <div className="cr-dorm-group__head">
+          <h3 className="cr-dorm-group__title">Weekend Infractions</h3>
+          <span className="cr-dorm-group__count">
+            {weekendRecords.length}{" "}
+            {weekendRecords.length === 1 ? "entry" : "entries"}
+          </span>
+        </div>
+        {weekendRecords.length === 0 ? (
+          <div className="cr-empty">None</div>
+        ) : (
+          <div className="cr-serve__group-body">
+            {weekendRecords.map((e) => (
+              <ServeCard key={e.id} entry={e} onClick={onInfClick} />
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
 }
 
 // ─── Activities tab ──────────────────────────────────────────────
@@ -862,6 +966,7 @@ export function LiveClient(props: Props) {
   const [query, setQuery] = useState("");
   const [todayDorm, setTodayDorm] = useState("all");
   const [weekendDorm, setWeekendDorm] = useState("all");
+  const [byDorm, setByDorm] = useState<string>("");
   const [hcView, setHcView] = useState<"grid" | "list">("grid");
   const [drawer, setDrawer] = useState<DrawerState>(null);
 
@@ -869,6 +974,15 @@ export function LiveClient(props: Props) {
     if (typeof window === "undefined") return;
     const stored = window.localStorage.getItem("live.hcView");
     if (stored === "list" || stored === "grid") setHcView(stored);
+    const storedDorm = window.localStorage.getItem("live.byDorm");
+    if (storedDorm) setByDorm(storedDorm);
+  }, []);
+
+  const updateByDorm = useCallback((next: string) => {
+    setByDorm(next);
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem("live.byDorm", next);
+    }
   }, []);
 
   const updateHcView = useCallback((next: "grid" | "list") => {
@@ -988,6 +1102,39 @@ export function LiveClient(props: Props) {
     [weekendRecords, query, weekendDorm],
   );
 
+  const allDorms = useMemo(() => {
+    const set = new Set<string>();
+    for (const s of allStudents) if (s.dorm) set.add(s.dorm);
+    for (const r of todayRecords) if (r.dorm) set.add(r.dorm);
+    for (const r of weekendRecords) if (r.dorm) set.add(r.dorm);
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [allStudents, todayRecords, weekendRecords]);
+
+  const effectiveByDorm = byDorm || allDorms[0] || "";
+
+  const byDormStudents = useMemo(() => {
+    if (!effectiveByDorm) return [];
+    let list = allStudents.filter((s) => s.dorm === effectiveByDorm);
+    const q = query.trim().toLowerCase();
+    if (q) {
+      list = list.filter((s) =>
+        [s.name, s.location, s.reason, s.roomNumber]
+          .filter(Boolean)
+          .some((v) => String(v).toLowerCase().includes(q)),
+      );
+    }
+    return list;
+  }, [allStudents, effectiveByDorm, query]);
+
+  const byDormToday = useMemo(
+    () => filterInfractions(todayRecords, query, effectiveByDorm),
+    [todayRecords, query, effectiveByDorm],
+  );
+  const byDormWeekend = useMemo(
+    () => filterInfractions(weekendRecords, query, effectiveByDorm),
+    [weekendRecords, query, effectiveByDorm],
+  );
+
   const events = activities.data?.events ?? [];
   const filteredEvents = useMemo(() => {
     if (active !== "activities" || !query.trim()) return events;
@@ -999,10 +1146,16 @@ export function LiveClient(props: Props) {
     );
   }, [active, events, query]);
 
+  const byDormStatCount =
+    byDormStudents.filter((s) => s.status === "in").length +
+    byDormToday.length +
+    byDormWeekend.length;
+
   const counts: Record<TabKey, number> = {
     hc: hcInNow,
     today: todayRecords.length,
     weekend: weekendRecords.length,
+    byDorm: byDormStatCount,
     activities: events.length,
   };
 
@@ -1013,9 +1166,11 @@ export function LiveClient(props: Props) {
         ? todayFiltered.length
         : active === "weekend"
           ? weekendFiltered.length
-          : active === "activities"
-            ? filteredEvents.length
-            : 0;
+          : active === "byDorm"
+            ? byDormStudents.length + byDormToday.length + byDormWeekend.length
+            : active === "activities"
+              ? filteredEvents.length
+              : 0;
 
   return (
     <div className="cr" data-density="balanced">
@@ -1026,7 +1181,12 @@ export function LiveClient(props: Props) {
         asOf={now}
       />
       <LastNightStrip data={dormNotes.data} />
-      <StatsStrip active={active} onSelect={setActive} counts={counts} />
+      <StatsStrip
+        active={active}
+        onSelect={setActive}
+        counts={counts}
+        byDormLabel={effectiveByDorm}
+      />
       <div className="cr-main">
         <RosterShell
           active={active}
@@ -1066,6 +1226,14 @@ export function LiveClient(props: Props) {
                 active={weekendDorm}
                 onSelect={setWeekendDorm}
               />
+            ) : active === "byDorm" ? (
+              <DormChips
+                dorms={allDorms}
+                active={effectiveByDorm}
+                onSelect={updateByDorm}
+                hideAll
+                label="Pick dorm"
+              />
             ) : null
           }
         >
@@ -1103,6 +1271,19 @@ export function LiveClient(props: Props) {
                 categories={props.weekendCategories}
                 emptyMessage="No outstanding weekend infractions."
                 onCardClick={(e) => setDrawer({ kind: "infraction", item: e })}
+              />
+            )
+          ) : active === "byDorm" ? (
+            !hc.data || !todayInfractions.data || !weekendInfractions.data ? (
+              <div className="cr-empty">Loading…</div>
+            ) : (
+              <ByDormTab
+                dorm={effectiveByDorm}
+                hcStudents={byDormStudents}
+                todayRecords={byDormToday}
+                weekendRecords={byDormWeekend}
+                onHcClick={(s) => setDrawer({ kind: "hc", item: s })}
+                onInfClick={(e) => setDrawer({ kind: "infraction", item: e })}
               />
             )
           ) : !activities.data ? (
