@@ -68,3 +68,48 @@ export async function patchNote(
   await kv.set(key, bucket);
   return updated;
 }
+
+// Returns every served entry across every bucket whose key falls inside
+// [startISO, endISO]. Used by resolution analytics. Tolerates KV unavailability
+// by returning an empty list.
+export async function getAllServedInWindow(
+  startISO: string,
+  endISO: string,
+): Promise<Array<ServedEntry & { bucketISO: string }>> {
+  const startMs = Date.parse(startISO);
+  const endMs = Date.parse(endISO);
+  if (!Number.isFinite(startMs) || !Number.isFinite(endMs)) return [];
+
+  let keys: string[] = [];
+  try {
+    keys = await kv.keys("clipboard:served:*");
+  } catch {
+    return [];
+  }
+
+  const inWindow = keys.filter((k) => {
+    const iso = k.slice("clipboard:served:".length);
+    const ms = Date.parse(iso);
+    return Number.isFinite(ms) && ms >= startMs && ms <= endMs;
+  });
+  if (inWindow.length === 0) return [];
+
+  const buckets = await Promise.all(
+    inWindow.map(async (k) => {
+      try {
+        const b = await kv.get<Bucket>(k);
+        return { iso: k.slice("clipboard:served:".length), bucket: b ?? {} };
+      } catch {
+        return { iso: k.slice("clipboard:served:".length), bucket: {} as Bucket };
+      }
+    }),
+  );
+
+  const out: Array<ServedEntry & { bucketISO: string }> = [];
+  for (const { iso, bucket } of buckets) {
+    for (const entry of Object.values(bucket)) {
+      out.push({ ...entry, bucketISO: iso });
+    }
+  }
+  return out;
+}

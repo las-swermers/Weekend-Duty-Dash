@@ -2,6 +2,7 @@ import { LiveClient } from "@/components/live/live-client";
 import { auth } from "@/lib/auth";
 import {
   currentMakeupWindow,
+  currentWeekendRange,
   serveCategoriesForToday,
   todayRange,
 } from "@/lib/dates";
@@ -20,6 +21,7 @@ export default async function LivePage() {
   const today = todayRange();
   const todayCategories = serveCategoriesForToday();
   const makeup = currentMakeupWindow();
+  const weekend = currentWeekendRange();
 
   return (
     <LiveClient
@@ -27,6 +29,7 @@ export default async function LivePage() {
       todayCategories={todayCategories}
       todayStartISO={today.start.toISOString()}
       todayEndISO={today.end.toISOString()}
+      weekendBucketISO={weekend.start.toISOString()}
       makeupStartISO={makeup.start.toISOString()}
       makeupEndISO={makeup.end.toISOString()}
     />

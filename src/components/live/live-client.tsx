@@ -16,6 +16,7 @@ interface Props {
   todayCategories: string[];
   todayStartISO: string;
   todayEndISO: string;
+  weekendBucketISO: string;
   makeupStartISO: string;
   makeupEndISO: string;
 }
@@ -75,6 +76,7 @@ export function LiveClient({
   todayCategories,
   todayStartISO,
   todayEndISO,
+  weekendBucketISO,
   makeupStartISO,
   makeupEndISO,
 }: Props) {
@@ -212,6 +214,8 @@ export function LiveClient({
           categories={todayCategories}
           startISO={todayStartISO}
           endISO={todayEndISO}
+          enableTickOff
+          bucketISO={weekendBucketISO}
         />
       ) : (
         <SectionShell
@@ -253,6 +257,8 @@ export function LiveClient({
         categories={["Wednesday morning catch-up"]}
         startISO={makeupStartISO}
         endISO={makeupEndISO}
+        enableTickOff
+        bucketISO={makeupStartISO}
       />
 
       <PastoralDormPivot
@@ -265,6 +271,8 @@ export function LiveClient({
         categories={["Wednesday make-up activity"]}
         startISO={makeupStartISO}
         endISO={makeupEndISO}
+        enableTickOff
+        bucketISO={makeupStartISO}
       />
 
       <SectionShell

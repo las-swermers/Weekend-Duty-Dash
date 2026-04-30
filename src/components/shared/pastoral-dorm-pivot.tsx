@@ -1,10 +1,14 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import useSWR from "swr";
 
 import { EmptyState, SectionShell } from "@/components/dashboard/sections";
-import { PastoralRow, type PastoralEntry } from "@/components/shared/pastoral-row";
+import {
+  PastoralRow,
+  type PastoralEntry,
+  type ServedEntry,
+} from "@/components/shared/pastoral-row";
 
 interface Props {
   id: string;
@@ -19,6 +23,8 @@ interface Props {
   days?: number;
   limit?: number;
   refreshMs?: number;
+  enableTickOff?: boolean;
+  bucketISO?: string;
 }
 
 type SortKey = "count" | "name";
@@ -51,7 +57,10 @@ export function PastoralDormPivot({
   days,
   limit = 200,
   refreshMs = 60_000,
+  enableTickOff = false,
+  bucketISO,
 }: Props) {
+  const tickBucket = bucketISO ?? startISO ?? "";
   const params = new URLSearchParams();
   params.set("categories", categories.join(","));
   if (startISO && endISO) {
@@ -67,8 +76,71 @@ export function PastoralDormPivot({
     refreshInterval: refreshMs,
   });
 
+  const servedSwr = useSWR<{ served: ServedEntry[] }>(
+    enableTickOff && tickBucket
+      ? `/api/clipboard?weekend=${encodeURIComponent(tickBucket)}`
+      : null,
+    fetcher,
+    { refreshInterval: refreshMs },
+  );
+
+  const servedMap = useMemo(() => {
+    const m = new Map<number, ServedEntry>();
+    for (const s of servedSwr.data?.served ?? []) m.set(s.recordId, s);
+    return m;
+  }, [servedSwr.data]);
+
   const [sortKey, setSortKey] = useState<SortKey>("count");
   useEffect(() => setSortKey(readStoredSort()), []);
+
+  const handleToggle = useCallback(
+    async (entry: PastoralEntry, currentlyServed: boolean) => {
+      if (!enableTickOff || !tickBucket) return;
+      const next: ServedEntry[] = (servedSwr.data?.served ?? []).filter(
+        (s) => s.recordId !== entry.id,
+      );
+      if (!currentlyServed) {
+        next.push({
+          recordId: entry.id,
+          servedBy: "you",
+          servedAt: new Date().toISOString(),
+        });
+      }
+      void servedSwr.mutate({ served: next }, { revalidate: false });
+      const method = currentlyServed ? "DELETE" : "POST";
+      await fetch("/api/clipboard", {
+        method,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          recordId: entry.id,
+          weekend: tickBucket,
+          studentName: entry.studentName,
+          dorm: entry.dorm,
+          category: entry.category,
+          recordDate: entry.date,
+        }),
+      });
+      void servedSwr.mutate();
+    },
+    [enableTickOff, servedSwr, tickBucket],
+  );
+
+  const handleNote = useCallback(
+    async (entry: PastoralEntry, note: string) => {
+      if (!enableTickOff || !tickBucket) return;
+      await fetch("/api/clipboard", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          recordId: entry.id,
+          weekend: tickBucket,
+          note,
+        }),
+      });
+      void servedSwr.mutate();
+    },
+    [enableTickOff, servedSwr, tickBucket],
+  );
 
   const updateSort = (next: SortKey) => {
     setSortKey(next);
@@ -159,7 +231,14 @@ export function PastoralDormPivot({
                 <div className="cat-card__body">
                   <div role="list">
                     {entries.map((e) => (
-                      <PastoralRow key={e.id} entry={e} showCategory />
+                      <PastoralRow
+                        key={e.id}
+                        entry={e}
+                        showCategory
+                        served={enableTickOff ? servedMap.get(e.id) : undefined}
+                        onToggle={enableTickOff ? handleToggle : undefined}
+                        onNote={enableTickOff ? handleNote : undefined}
+                      />
                     ))}
                   </div>
                 </div>

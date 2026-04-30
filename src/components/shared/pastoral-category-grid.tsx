@@ -23,6 +23,7 @@ interface Props {
   limit?: number;
   refreshMs?: number;
   enableTickOff?: boolean;
+  bucketISO?: string;
 }
 
 type SortKey = "date" | "dorm";
@@ -60,7 +61,9 @@ export function PastoralCategoryGrid({
   limit = 200,
   refreshMs = 60_000,
   enableTickOff = false,
+  bucketISO,
 }: Props) {
+  const tickBucket = bucketISO ?? startISO;
   const url = `/api/orah/pastoral-by-category?categories=${encodeURIComponent(
     categories.join(","),
   )}&start=${encodeURIComponent(startISO)}&end=${encodeURIComponent(
@@ -73,7 +76,7 @@ export function PastoralCategoryGrid({
 
   const servedSwr = useSWR<{ served: ServedEntry[] }>(
     enableTickOff
-      ? `/api/clipboard?weekend=${encodeURIComponent(startISO)}`
+      ? `/api/clipboard?weekend=${encodeURIComponent(tickBucket)}`
       : null,
     fetcher,
     { refreshInterval: refreshMs },
@@ -158,7 +161,7 @@ export function PastoralCategoryGrid({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           recordId: entry.id,
-          weekend: startISO,
+          weekend: tickBucket,
           studentName: entry.studentName,
           dorm: entry.dorm,
           category: entry.category,
@@ -167,7 +170,7 @@ export function PastoralCategoryGrid({
       });
       void servedSwr.mutate();
     },
-    [enableTickOff, servedSwr, startISO],
+    [enableTickOff, servedSwr, tickBucket],
   );
 
   const handleNote = useCallback(
@@ -178,13 +181,13 @@ export function PastoralCategoryGrid({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           recordId: entry.id,
-          weekend: startISO,
+          weekend: tickBucket,
           note,
         }),
       });
       void servedSwr.mutate();
     },
-    [enableTickOff, servedSwr, startISO],
+    [enableTickOff, servedSwr, tickBucket],
   );
 
   return (
