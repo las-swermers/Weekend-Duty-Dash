@@ -145,11 +145,18 @@ export async function GET() {
     const studentMap = buildStudentMap(students);
     const houseMap = buildHouseMap(houses);
 
-    const inHcNow = new Map<number, OrahLocationRecord>();
+    // Track every student's current location record (any location) so we
+    // can detect students whose pass ended via a location change that did
+    // not emit a paired "out" event for HC (Orah just opens a new "in"
+    // record at the new location, e.g. "Signed in").
+    const currentByStudent = new Map<number, OrahLocationRecord>();
     for (const r of currentResp.data ?? []) {
-      if (r.type === "in" && matchesHcLocation(r.location)) {
-        inHcNow.set(r.student.id, r);
-      }
+      if (r.type === "in") currentByStudent.set(r.student.id, r);
+    }
+
+    const inHcNow = new Map<number, OrahLocationRecord>();
+    for (const [sid, r] of currentByStudent) {
+      if (matchesHcLocation(r.location)) inHcNow.set(sid, r);
     }
 
     const eventsByStudent = new Map<number, OrahLocationRecord[]>();
@@ -206,7 +213,23 @@ export async function GET() {
       }
 
       if (openIn) {
-        intervals.push({ inMs: openIn.ms, outMs: null, rec: openIn.rec });
+        // If get-current says the student is no longer in HC but the
+        // timeline never recorded a paired "out", close the interval at
+        // the time their current (non-HC) location record was created.
+        // This handles Orah's auto-"Signed in" on pass-end, which does
+        // not emit an HC out-event.
+        let outMs: number | null = null;
+        if (!stillIn) {
+          const currentRec = currentByStudent.get(studentId);
+          const switchedAt = currentRec
+            ? new Date(currentRec.record_time).getTime()
+            : NaN;
+          outMs =
+            Number.isFinite(switchedAt) && switchedAt > openIn.ms
+              ? switchedAt
+              : endMs;
+        }
+        intervals.push({ inMs: openIn.ms, outMs, rec: openIn.rec });
       } else if (stillIn && intervals.length === 0) {
         // No events today but still in per get-current. Treat startMs
         // as implicit in time so the row still appears with a duration.
@@ -222,7 +245,8 @@ export async function GET() {
       }
       const durationMinutes = Math.max(0, Math.round(totalMs / 60_000));
 
-      const isCurrentlyIn = Boolean(stillIn) || intervals.at(-1)!.outMs === null;
+      // get-current is the source of truth for "currently in HC".
+      const isCurrentlyIn = Boolean(stillIn);
       const last = intervals.at(-1)!;
       const primaryRec = stillIn ?? last.rec;
 
