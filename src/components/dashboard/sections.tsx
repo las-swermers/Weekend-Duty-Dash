@@ -94,7 +94,9 @@ export function HCSection({ data }: { data: HCStudent[] }) {
                 </div>
               </div>
               <div className="row__meta">
-                {s.status === "overnight" ? (
+                {s.status === "rested" ? (
+                  <span className="tag tag--rested">Rested Friday</span>
+                ) : s.status === "overnight" ? (
                   <span className="tag tag--overnight">Overnight</span>
                 ) : (
                   <span className="tag tag--in">In</span>

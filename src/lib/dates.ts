@@ -40,6 +40,32 @@ export function fridayOfCurrentWeekend(now: Date = new Date()): WeekendRange {
   return { start, end };
 }
 
+// Friday "rest period" window: 08:00 → 16:00 Europe/Zurich. This is the
+// school-day stretch when students may be excused to rest in the Health
+// Center. The weekend HC snapshot reports who overlapped with this slot.
+export function fridayRestWindow(now: Date = new Date()): WeekendRange {
+  const { start: friday } = currentWeekendRange(now);
+  const start = new TZDate(friday, TZ);
+  start.setHours(8, 0, 0, 0);
+  const end = new TZDate(friday, TZ);
+  end.setHours(16, 0, 0, 0);
+  return { start, end };
+}
+
+// Broader timeline fetch range used to compute the Friday rest window.
+// Reaches back to Thursday 00:00 so that an "in" record from before
+// Friday is still picked up for students who were already in HC when
+// the rest window began.
+export function fridayRestFetchRange(now: Date = new Date()): WeekendRange {
+  const { start: friday } = currentWeekendRange(now);
+  const start = new TZDate(friday, TZ);
+  start.setDate(friday.getDate() - 1);
+  start.setHours(0, 0, 0, 0);
+  const end = new TZDate(friday, TZ);
+  end.setHours(23, 59, 59, 999);
+  return { start, end };
+}
+
 // "Last night": previous evening 18:00 → today 06:00 (Europe/Zurich).
 // If called before 06:00, "last night" is yesterday-evening → this morning;
 // if called after 06:00, it's last-evening → this morning of the same day.
@@ -59,15 +85,15 @@ export function lastNightRange(now: Date = new Date()): WeekendRange {
 }
 
 // True when the dashboard should default to the Weekend page rather than
-// Live. Window: Friday 18:00 → Monday 06:00 Europe/Zurich. Outside that,
+// Live. Window: Friday 00:00 → Monday 05:00 Europe/Zurich. Outside that,
 // "live" is more relevant. Used by the root redirect at `/`.
 export function isWeekendMode(now: Date = new Date()): boolean {
   const local = new TZDate(now, TZ);
   const day = local.getDay();
   const hour = local.getHours();
-  if (day === 5 && hour >= 18) return true;
+  if (day === 5) return true;
   if (day === 6 || day === 0) return true;
-  if (day === 1 && hour < 6) return true;
+  if (day === 1 && hour < 5) return true;
   return false;
 }
 

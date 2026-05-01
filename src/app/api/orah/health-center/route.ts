@@ -1,8 +1,9 @@
-// Snapshot: students who spent time in a Health Center / Nursery /
-// Infirmary location, or on a "rest in room" pass, during Friday of
-// the current weekend (Europe/Zurich). Reads location-record/timeline
-// for the Friday window only, pairs "in"/"out" events per student, and
-// reports total minutes spent in HC on Friday.
+// Snapshot: students who rested in a Health Center / Nursery /
+// Infirmary location, or on a "rest in room" pass, between 08:00 and
+// 16:00 on Friday of the current weekend (Europe/Zurich). Pulls a
+// Thursday→Friday-end timeline so prior "in" events are seen, then
+// reports each student's total minutes that overlap the 08:00–16:00
+// rest window.
 //
 // LAS has a per-dorm HC layout, so the location resolver returns an
 // array of ids. Rest-pass locations are matched either via
@@ -12,7 +13,7 @@
 import { NextResponse } from "next/server";
 
 import { auth } from "@/lib/auth";
-import { fridayOfCurrentWeekend } from "@/lib/dates";
+import { fridayRestFetchRange, fridayRestWindow } from "@/lib/dates";
 import { OrahError, isMockMode, orahCall } from "@/lib/orah";
 import {
   buildHouseMap,
@@ -35,7 +36,7 @@ interface DashboardHCStudent {
   dorm: string;
   reason: string;
   since: string;
-  status: "in" | "overnight";
+  status: "rested";
   location: string;
   locationId: number;
 }
@@ -99,7 +100,7 @@ export async function GET() {
         dorm: s.dorm,
         reason: s.reason,
         since: s.since,
-        status: s.status,
+        status: "rested",
         location: "Health Center",
         locationId: 0,
       })),
@@ -109,9 +110,10 @@ export async function GET() {
   }
 
   try {
-    const friday = fridayOfCurrentWeekend();
-    const startISO = friday.start.toISOString();
-    const endISO = friday.end.toISOString();
+    const fetchRange = fridayRestFetchRange();
+    const restWindow = fridayRestWindow();
+    const startISO = fetchRange.start.toISOString();
+    const endISO = fetchRange.end.toISOString();
 
     const hc = await resolveHealthCenterLocationIds();
     const hcSet = new Set(hc.ids);
@@ -152,15 +154,15 @@ export async function GET() {
     const studentMap = buildStudentMap(students);
     const houseMap = buildHouseMap(houses);
 
-    const fridayMatches = timeline.filter((r) =>
+    const hcRecords = timeline.filter((r) =>
       matchesHcLocation(r.location),
     );
 
-    const fridayStartMs = friday.start.getTime();
-    const fridayEndMs = friday.end.getTime();
+    const windowStartMs = restWindow.start.getTime();
+    const windowEndMs = restWindow.end.getTime();
 
     const recordsByStudent = new Map<number, OrahLocationRecord[]>();
-    for (const r of fridayMatches) {
+    for (const r of hcRecords) {
       const arr = recordsByStudent.get(r.student.id);
       if (arr) arr.push(r);
       else recordsByStudent.set(r.student.id, [r]);
@@ -172,7 +174,6 @@ export async function GET() {
 
       let totalMs = 0;
       let openInTime: number | null = null;
-      let stillIn = false;
       let primary: OrahLocationRecord = records[0];
       for (const r of records) {
         if (r.type === "in") primary = r;
@@ -181,18 +182,21 @@ export async function GET() {
       for (const r of records) {
         const t = new Date(r.record_time).getTime();
         if (r.type === "in") {
-          if (openInTime === null) openInTime = Math.max(t, fridayStartMs);
+          if (openInTime === null) openInTime = t;
         } else {
-          // out: close an open interval, or treat start of Friday as
-          // implicit in time if the student was already in HC overnight.
-          const startMs = openInTime ?? fridayStartMs;
-          totalMs += Math.max(0, Math.min(t, fridayEndMs) - startMs);
+          // out: close an open interval, clamped to the rest window.
+          const startMs = openInTime ?? restWindow.start.getTime();
+          const overlapStart = Math.max(startMs, windowStartMs);
+          const overlapEnd = Math.min(t, windowEndMs);
+          totalMs += Math.max(0, overlapEnd - overlapStart);
           openInTime = null;
         }
       }
       if (openInTime !== null) {
-        totalMs += Math.max(0, fridayEndMs - openInTime);
-        stillIn = true;
+        // Still in HC at end of fetch range — count overlap up to the
+        // rest-window end.
+        const overlapStart = Math.max(openInTime, windowStartMs);
+        totalMs += Math.max(0, windowEndMs - overlapStart);
       }
 
       if (totalMs <= 0) continue;
@@ -212,7 +216,7 @@ export async function GET() {
           ? `Rest pass — ${primary.location?.name ?? "in room"}`
           : `In ${primary.location?.name ?? "Health Center"}`,
         since: formatDuration(totalMs),
-        status: stillIn ? "overnight" : "in",
+        status: "rested",
         location: primary.location?.name ?? "Health Center",
         locationId: primary.location?.id ?? 0,
       });
@@ -227,7 +231,12 @@ export async function GET() {
 
     return NextResponse.json({
       students: out,
-      window: { startISO, endISO, label: "Friday Europe/Zurich" },
+      window: {
+        startISO: restWindow.start.toISOString(),
+        endISO: restWindow.end.toISOString(),
+        label: "Friday 08:00–16:00 Europe/Zurich",
+      },
+      fetchRange: { startISO, endISO },
       hcLocations: { ids: hc.ids, via: hc.via },
       byLocation: Array.from(byLocation, ([name, count]) => ({ name, count })),
       pulledAt: new Date().toISOString(),

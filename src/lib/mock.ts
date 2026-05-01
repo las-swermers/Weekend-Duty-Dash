@@ -11,7 +11,7 @@ export interface HCStudent {
   dorm: string;
   reason: string;
   since: string;
-  status: "in" | "overnight";
+  status: "in" | "overnight" | "rested";
   location?: string;
   locationId?: number;
 }

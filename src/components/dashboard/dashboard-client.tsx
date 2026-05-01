@@ -311,7 +311,10 @@ function RosterShell({
 
 // ─── HC tab ──────────────────────────────────────────────────────
 
-function hcTagInfo(s: HCStudent): { label: string; cls: "in" | "overnight" } {
+function hcTagInfo(
+  s: HCStudent,
+): { label: string; cls: "in" | "overnight" | "rested" } {
+  if (s.status === "rested") return { label: "Rested Friday", cls: "rested" };
   if (s.status === "overnight") return { label: "Overnight", cls: "overnight" };
   return { label: "In HC", cls: "in" };
 }
@@ -392,6 +395,7 @@ function HCTab({
       {groupKeys.map((key) => {
         const list = grouped.get(key) ?? [];
         const overnight = list.filter((s) => s.status === "overnight").length;
+        const rested = list.filter((s) => s.status === "rested").length;
         return (
           <div key={key} className="cr-dorm-group">
             <div className="cr-dorm-group__head">
@@ -399,6 +403,7 @@ function HCTab({
               <span className="cr-dorm-group__count">
                 {list.length}
                 {overnight > 0 ? ` · ${overnight} overnight` : ""}
+                {rested > 0 ? ` · ${rested} rested Fri` : ""}
               </span>
             </div>
             <div className="cr-grid">
@@ -745,6 +750,7 @@ function ByDormTab({
     return <div className="cr-empty">Nothing flagged for {dorm}.</div>;
   }
   const overnight = hcStudents.filter((s) => s.status === "overnight").length;
+  const rested = hcStudents.filter((s) => s.status === "rested").length;
   return (
     <div className="cr-groups-cols">
       <div className="cr-dorm-group">
@@ -753,6 +759,7 @@ function ByDormTab({
           <span className="cr-dorm-group__count">
             {hcStudents.length}
             {overnight > 0 ? ` · ${overnight} overnight` : ""}
+            {rested > 0 ? ` · ${rested} rested Fri` : ""}
           </span>
         </div>
         {hcStudents.length === 0 ? (
