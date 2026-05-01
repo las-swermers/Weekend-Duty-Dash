@@ -509,6 +509,7 @@ a { color: inherit; }
 .tag--signed-out { background: var(--moss-soft); color: var(--moss); border-color: transparent; }
 .tag--pending { background: var(--amber-soft); color: var(--amber-ink); border-color: transparent; }
 .tag--overnight { background: var(--coral-soft); color: var(--coral-ink); border-color: transparent; }
+.tag--rested { background: var(--coral-soft); color: var(--coral-ink); border-color: transparent; }
 .tag--in { background: var(--paper-3); color: var(--ink-2); }
 .tag--watchlist { background: var(--coral-soft); color: var(--coral-ink); border-color: transparent; }
 .tag--sensitive { background: var(--amber-soft); color: var(--amber-ink); border-color: transparent; }
@@ -1963,6 +1964,7 @@ details[open] > .analytics-filters__summary::before { content: "▾ "; }
 }
 .cr-card--in        .cr-card__pip { background: var(--moss); }
 .cr-card--overnight .cr-card__pip { background: var(--coral); }
+.cr-card--rested    .cr-card__pip { background: var(--coral); }
 .cr-card--rest      .cr-card__pip { background: var(--amber); }
 .cr-card--out       .cr-card__pip { background: var(--ink-4); }
 .cr-card__corner {
@@ -2022,6 +2024,7 @@ details[open] > .analytics-filters__summary::before { content: "▾ "; }
 }
 .cr-card__tag--in        { background: var(--moss-soft); color: var(--moss); }
 .cr-card__tag--overnight { background: var(--coral-soft); color: var(--coral-ink); }
+.cr-card__tag--rested    { background: var(--coral-soft); color: var(--coral-ink); }
 .cr-card__tag--rest      { background: var(--amber-soft); color: var(--amber-ink); }
 .cr-card__tag--out       { background: var(--paper-3); color: var(--ink-3); }
 
