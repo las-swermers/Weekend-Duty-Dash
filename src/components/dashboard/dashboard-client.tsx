@@ -1204,9 +1204,12 @@ export function DashboardClient({
   );
 
   const studyHallUrl = useMemo(() => {
+    // Watchlist flags persist most of the school year, so the originating
+    // pastoral record is often older than the route's 180-day default.
     const params = new URLSearchParams({
       categories: STUDY_HALL_CATEGORIES.join(","),
       watchlist: "1",
+      days: "365",
       limit: "200",
     });
     return `/api/orah/pastoral-by-category?${params.toString()}`;
