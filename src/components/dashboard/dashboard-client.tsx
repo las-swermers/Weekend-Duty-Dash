@@ -140,7 +140,7 @@ const TABS: Tab[] = [
     key: "studyHall",
     label: "Study",
     titleEm: "Hall",
-    sub: "this weekend",
+    sub: "active watchlist",
     searchPlaceholder: "Search study hall…",
     unit: "ENTRIES",
   },
@@ -751,7 +751,7 @@ function InfractionsTab({
     for (const cat of categories) m.set(cat, []);
     for (const r of records) {
       const matchKey = categories.find(
-        (c) => c.toLowerCase() === r.category.toLowerCase(),
+        (c) => c.trim().toLowerCase() === r.category.trim().toLowerCase(),
       );
       if (!matchKey) continue;
       m.get(matchKey)!.push(r);
@@ -1204,14 +1204,13 @@ export function DashboardClient({
   );
 
   const studyHallUrl = useMemo(() => {
-    // LAS doesn't toggle the watchlist boolean on Weekend Study Hall
-    // records (Orah's Watchlist sidebar is computed differently).
-    // Pastoral records are dated when the infraction happened, and an
-    // entry can sit on the watchlist for months until served, so use a
-    // wide 180-day lookback.
+    // Active Study Hall watchlist students. Pastoral records can sit on
+    // the watchlist for months until served, so use the route's
+    // watchlist default (180 days). Limit raised so older entries
+    // outside the first page still come back.
     const params = new URLSearchParams({
       categories: STUDY_HALL_CATEGORIES.join(","),
-      days: "180",
+      watchlist: "1",
       limit: "200",
     });
     return `/api/orah/pastoral-by-category?${params.toString()}`;
