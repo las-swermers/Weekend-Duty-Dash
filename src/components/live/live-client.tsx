@@ -623,6 +623,50 @@ function DormChips({
   );
 }
 
+function MultiDormChips({
+  dorms,
+  selected,
+  onToggle,
+  onClear,
+  label = "Pick dorms",
+}: {
+  dorms: string[];
+  selected: ReadonlySet<string>;
+  onToggle: (dorm: string) => void;
+  onClear: () => void;
+  label?: string;
+}) {
+  if (dorms.length === 0) return null;
+  const allOn = selected.size === 0;
+  return (
+    <div className="cr-dorm-chips">
+      <span className="cr-dorm-chips__label">{label}</span>
+      <button
+        type="button"
+        className={`cr-dorm-chip${allOn ? " is-on" : ""}`}
+        onClick={onClear}
+        aria-pressed={allOn}
+      >
+        All
+      </button>
+      {dorms.map((d) => {
+        const on = selected.has(d);
+        return (
+          <button
+            key={d}
+            type="button"
+            className={`cr-dorm-chip${on ? " is-on" : ""}`}
+            onClick={() => onToggle(d)}
+            aria-pressed={on}
+          >
+            {d}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 function InfractionsTab({
   records,
   categories,
@@ -703,29 +747,49 @@ function filterInfractions(
   return out;
 }
 
+function filterInfractionsByDorms(
+  records: PastoralEntry[],
+  query: string,
+  dorms: ReadonlySet<string>,
+): PastoralEntry[] {
+  let out = records;
+  if (dorms.size > 0) out = out.filter((r) => r.dorm && dorms.has(r.dorm));
+  const q = query.trim().toLowerCase();
+  if (q) {
+    out = out.filter((r) =>
+      [r.studentName, r.dorm, r.category, r.description, r.createdBy]
+        .filter(Boolean)
+        .some((v) => String(v).toLowerCase().includes(q)),
+    );
+  }
+  return out;
+}
+
 // ─── By Dorm tab ─────────────────────────────────────────────────
 
 function ByDormTab({
-  dorm,
+  dormsLabel,
+  hasSelection,
   hcStudents,
   todayRecords,
   weekendRecords,
   onHcClick,
   onInfClick,
 }: {
-  dorm: string;
+  dormsLabel: string;
+  hasSelection: boolean;
   hcStudents: HCStudent[];
   todayRecords: PastoralEntry[];
   weekendRecords: PastoralEntry[];
   onHcClick: (s: HCStudent) => void;
   onInfClick: (e: PastoralEntry) => void;
 }) {
-  if (!dorm) {
+  if (!hasSelection) {
     return <div className="cr-empty">Pick a dorm above to view its roster.</div>;
   }
   const total = hcStudents.length + todayRecords.length + weekendRecords.length;
   if (total === 0) {
-    return <div className="cr-empty">Nothing flagged for {dorm}.</div>;
+    return <div className="cr-empty">Nothing flagged for {dormsLabel}.</div>;
   }
   const inNow = hcStudents.filter((s) => s.status === "in").length;
 
@@ -966,7 +1030,9 @@ export function LiveClient(props: Props) {
   const [query, setQuery] = useState("");
   const [todayDorm, setTodayDorm] = useState("all");
   const [weekendDorm, setWeekendDorm] = useState("all");
-  const [byDorm, setByDorm] = useState<string>("");
+  const [byDormSet, setByDormSet] = useState<ReadonlySet<string>>(
+    () => new Set(),
+  );
   const [hcView, setHcView] = useState<"grid" | "list">("grid");
   const [drawer, setDrawer] = useState<DrawerState>(null);
 
@@ -975,15 +1041,48 @@ export function LiveClient(props: Props) {
     const stored = window.localStorage.getItem("live.hcView");
     if (stored === "list" || stored === "grid") setHcView(stored);
     const storedDorm = window.localStorage.getItem("live.byDorm");
-    if (storedDorm) setByDorm(storedDorm);
-  }, []);
-
-  const updateByDorm = useCallback((next: string) => {
-    setByDorm(next);
-    if (typeof window !== "undefined") {
-      window.localStorage.setItem("live.byDorm", next);
+    if (!storedDorm) return;
+    try {
+      const parsed = JSON.parse(storedDorm);
+      if (Array.isArray(parsed)) {
+        setByDormSet(new Set(parsed.filter((v) => typeof v === "string")));
+      } else if (typeof parsed === "string" && parsed) {
+        setByDormSet(new Set([parsed]));
+      }
+    } catch {
+      if (storedDorm) setByDormSet(new Set([storedDorm]));
     }
   }, []);
+
+  const persistByDorm = useCallback((next: ReadonlySet<string>) => {
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(
+        "live.byDorm",
+        JSON.stringify(Array.from(next)),
+      );
+    }
+  }, []);
+
+  const toggleByDorm = useCallback(
+    (dorm: string) => {
+      setByDormSet((prev) => {
+        const next = new Set(prev);
+        if (next.has(dorm)) next.delete(dorm);
+        else next.add(dorm);
+        persistByDorm(next);
+        return next;
+      });
+    },
+    [persistByDorm],
+  );
+
+  const clearByDorm = useCallback(() => {
+    setByDormSet(() => {
+      const next = new Set<string>();
+      persistByDorm(next);
+      return next;
+    });
+  }, [persistByDorm]);
 
   const updateHcView = useCallback((next: "grid" | "list") => {
     setHcView(next);
@@ -1110,29 +1209,43 @@ export function LiveClient(props: Props) {
     return Array.from(set).sort((a, b) => a.localeCompare(b));
   }, [allStudents, todayRecords, weekendRecords]);
 
-  const effectiveByDorm = byDorm || allDorms[0] || "";
+  const effectiveByDormSet = useMemo<ReadonlySet<string>>(() => {
+    if (byDormSet.size > 0) return byDormSet;
+    const fallback = allDorms[0];
+    return fallback ? new Set([fallback]) : new Set();
+  }, [byDormSet, allDorms]);
+
+  const effectiveByDormLabel = useMemo(() => {
+    const arr = Array.from(effectiveByDormSet);
+    if (arr.length === 0) return "";
+    if (arr.length === 1) return arr[0]!;
+    if (arr.length === 2) return arr.join(" + ");
+    return `${arr.length} dorms`;
+  }, [effectiveByDormSet]);
 
   const byDormStudents = useMemo(() => {
-    if (!effectiveByDorm) return [];
-    let list = allStudents.filter((s) => s.dorm === effectiveByDorm);
+    if (effectiveByDormSet.size === 0) return [];
+    let list = allStudents.filter(
+      (s) => s.dorm && effectiveByDormSet.has(s.dorm),
+    );
     const q = query.trim().toLowerCase();
     if (q) {
       list = list.filter((s) =>
-        [s.name, s.location, s.reason, s.roomNumber]
+        [s.name, s.dorm, s.location, s.reason, s.roomNumber]
           .filter(Boolean)
           .some((v) => String(v).toLowerCase().includes(q)),
       );
     }
     return list;
-  }, [allStudents, effectiveByDorm, query]);
+  }, [allStudents, effectiveByDormSet, query]);
 
   const byDormToday = useMemo(
-    () => filterInfractions(todayRecords, query, effectiveByDorm),
-    [todayRecords, query, effectiveByDorm],
+    () => filterInfractionsByDorms(todayRecords, query, effectiveByDormSet),
+    [todayRecords, query, effectiveByDormSet],
   );
   const byDormWeekend = useMemo(
-    () => filterInfractions(weekendRecords, query, effectiveByDorm),
-    [weekendRecords, query, effectiveByDorm],
+    () => filterInfractionsByDorms(weekendRecords, query, effectiveByDormSet),
+    [weekendRecords, query, effectiveByDormSet],
   );
 
   const events = activities.data?.events ?? [];
@@ -1185,7 +1298,7 @@ export function LiveClient(props: Props) {
         active={active}
         onSelect={setActive}
         counts={counts}
-        byDormLabel={effectiveByDorm}
+        byDormLabel={effectiveByDormLabel}
       />
       <div className="cr-main">
         <RosterShell
@@ -1227,12 +1340,12 @@ export function LiveClient(props: Props) {
                 onSelect={setWeekendDorm}
               />
             ) : active === "byDorm" ? (
-              <DormChips
+              <MultiDormChips
                 dorms={allDorms}
-                active={effectiveByDorm}
-                onSelect={updateByDorm}
-                hideAll
-                label="Pick dorm"
+                selected={byDormSet}
+                onToggle={toggleByDorm}
+                onClear={clearByDorm}
+                label="Pick dorms"
               />
             ) : null
           }
@@ -1278,7 +1391,8 @@ export function LiveClient(props: Props) {
               <div className="cr-empty">Loading…</div>
             ) : (
               <ByDormTab
-                dorm={effectiveByDorm}
+                dormsLabel={effectiveByDormLabel}
+                hasSelection={effectiveByDormSet.size > 0}
                 hcStudents={byDormStudents}
                 todayRecords={byDormToday}
                 weekendRecords={byDormWeekend}

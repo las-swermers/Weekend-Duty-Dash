@@ -86,7 +86,13 @@ function formatDateTime(iso: string): string {
   }).format(new Date(iso));
 }
 
-type TabKey = "byDorm" | "hc" | "noPa" | "weekendInfractions" | "activities";
+type TabKey =
+  | "byDorm"
+  | "hc"
+  | "noPa"
+  | "weekendInfractions"
+  | "studyHall"
+  | "activities";
 
 interface Tab {
   key: TabKey;
@@ -128,6 +134,14 @@ const TABS: Tab[] = [
     titleEm: "Infractions",
     sub: "outstanding watchlist",
     searchPlaceholder: "Search infractions…",
+    unit: "ENTRIES",
+  },
+  {
+    key: "studyHall",
+    label: "Study",
+    titleEm: "Hall",
+    sub: "weekend study hall watchlist",
+    searchPlaceholder: "Search study hall…",
     unit: "ENTRIES",
   },
   {
@@ -518,6 +532,8 @@ const WEEKEND_INFRACTION_CATEGORIES = [
   "2-hour early check-in",
 ];
 
+const STUDY_HALL_CATEGORIES = ["Weekend Study Hall"];
+
 function ServeCard({
   entry,
   onClick,
@@ -629,6 +645,50 @@ function DormChips({
   );
 }
 
+function MultiDormChips({
+  dorms,
+  selected,
+  onToggle,
+  onClear,
+  label = "Pick dorms",
+}: {
+  dorms: string[];
+  selected: ReadonlySet<string>;
+  onToggle: (dorm: string) => void;
+  onClear: () => void;
+  label?: string;
+}) {
+  if (dorms.length === 0) return null;
+  const allOn = selected.size === 0;
+  return (
+    <div className="cr-dorm-chips">
+      <span className="cr-dorm-chips__label">{label}</span>
+      <button
+        type="button"
+        className={`cr-dorm-chip${allOn ? " is-on" : ""}`}
+        onClick={onClear}
+        aria-pressed={allOn}
+      >
+        All
+      </button>
+      {dorms.map((d) => {
+        const on = selected.has(d);
+        return (
+          <button
+            key={d}
+            type="button"
+            className={`cr-dorm-chip${on ? " is-on" : ""}`}
+            onClick={() => onToggle(d)}
+            aria-pressed={on}
+          >
+            {d}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 function uniqueDorms(records: PastoralEntry[]): string[] {
   const set = new Set<string>();
   for (const r of records) if (r.dorm) set.add(r.dorm);
@@ -642,6 +702,24 @@ function filterInfractions(
 ): PastoralEntry[] {
   let out = records;
   if (dorm !== "all") out = out.filter((r) => r.dorm === dorm);
+  const q = query.trim().toLowerCase();
+  if (q) {
+    out = out.filter((r) =>
+      [r.studentName, r.dorm, r.category, r.description, r.createdBy]
+        .filter(Boolean)
+        .some((v) => String(v).toLowerCase().includes(q)),
+    );
+  }
+  return out;
+}
+
+function filterInfractionsByDorms(
+  records: PastoralEntry[],
+  query: string,
+  dorms: ReadonlySet<string>,
+): PastoralEntry[] {
+  let out = records;
+  if (dorms.size > 0) out = out.filter((r) => r.dorm && dorms.has(r.dorm));
   const q = query.trim().toLowerCase();
   if (q) {
     out = out.filter((r) =>
@@ -721,33 +799,40 @@ function InfractionsTab({
 // ─── By Dorm tab ─────────────────────────────────────────────────
 
 function ByDormTab({
-  dorm,
+  dormsLabel,
+  hasSelection,
   hcStudents,
   noPaStudents,
   weekendRecords,
+  studyHallRecords,
   servedMap,
   onHcClick,
   onNoPaClick,
   onInfClick,
   onToggleServed,
 }: {
-  dorm: string;
+  dormsLabel: string;
+  hasSelection: boolean;
   hcStudents: HCStudent[];
   noPaStudents: NoPaStudent[];
   weekendRecords: PastoralEntry[];
+  studyHallRecords: PastoralEntry[];
   servedMap: Map<number, ServedEntry>;
   onHcClick: (s: HCStudent) => void;
   onNoPaClick: (s: NoPaStudent) => void;
   onInfClick: (e: PastoralEntry) => void;
   onToggleServed: (entry: PastoralEntry, currentlyServed: boolean) => void;
 }) {
-  if (!dorm) {
+  if (!hasSelection) {
     return <div className="cr-empty">Pick a dorm above to view its roster.</div>;
   }
   const total =
-    hcStudents.length + noPaStudents.length + weekendRecords.length;
+    hcStudents.length +
+    noPaStudents.length +
+    weekendRecords.length +
+    studyHallRecords.length;
   if (total === 0) {
-    return <div className="cr-empty">Nothing flagged for {dorm}.</div>;
+    return <div className="cr-empty">Nothing flagged for {dormsLabel}.</div>;
   }
   const overnight = hcStudents.filter((s) => s.status === "overnight").length;
   const rested = hcStudents.filter((s) => s.status === "rested").length;
@@ -809,6 +894,25 @@ function ByDormTab({
                 served={servedMap.get(e.id)}
                 onToggleServed={onToggleServed}
               />
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div className="cr-dorm-group">
+        <div className="cr-dorm-group__head">
+          <h3 className="cr-dorm-group__title">Weekend Study Hall</h3>
+          <span className="cr-dorm-group__count">
+            {studyHallRecords.length}{" "}
+            {studyHallRecords.length === 1 ? "entry" : "entries"}
+          </span>
+        </div>
+        {studyHallRecords.length === 0 ? (
+          <div className="cr-empty">None</div>
+        ) : (
+          <div className="cr-serve__group-body">
+            {studyHallRecords.map((e) => (
+              <ServeCard key={e.id} entry={e} onClick={onInfClick} />
             ))}
           </div>
         )}
@@ -1017,21 +1121,58 @@ export function DashboardClient({
   const [active, setActive] = useState<TabKey>("byDorm");
   const [query, setQuery] = useState("");
   const [weekendDorm, setWeekendDorm] = useState("all");
-  const [byDorm, setByDorm] = useState<string>("");
+  const [studyHallDorm, setStudyHallDorm] = useState("all");
+  const [byDormSet, setByDormSet] = useState<ReadonlySet<string>>(
+    () => new Set(),
+  );
   const [drawer, setDrawer] = useState<DrawerState>(null);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
     const stored = window.localStorage.getItem("weekend.byDorm");
-    if (stored) setByDorm(stored);
-  }, []);
-
-  const updateByDorm = useCallback((next: string) => {
-    setByDorm(next);
-    if (typeof window !== "undefined") {
-      window.localStorage.setItem("weekend.byDorm", next);
+    if (!stored) return;
+    try {
+      const parsed = JSON.parse(stored);
+      if (Array.isArray(parsed)) {
+        setByDormSet(new Set(parsed.filter((v) => typeof v === "string")));
+      } else if (typeof parsed === "string" && parsed) {
+        // Migrate previous single-string format.
+        setByDormSet(new Set([parsed]));
+      }
+    } catch {
+      if (stored) setByDormSet(new Set([stored]));
     }
   }, []);
+
+  const persistByDorm = useCallback((next: ReadonlySet<string>) => {
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(
+        "weekend.byDorm",
+        JSON.stringify(Array.from(next)),
+      );
+    }
+  }, []);
+
+  const toggleByDorm = useCallback(
+    (dorm: string) => {
+      setByDormSet((prev) => {
+        const next = new Set(prev);
+        if (next.has(dorm)) next.delete(dorm);
+        else next.add(dorm);
+        persistByDorm(next);
+        return next;
+      });
+    },
+    [persistByDorm],
+  );
+
+  const clearByDorm = useCallback(() => {
+    setByDormSet(() => {
+      const next = new Set<string>();
+      persistByDorm(next);
+      return next;
+    });
+  }, [persistByDorm]);
   const [refreshing, setRefreshing] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [lastUpdated, setLastUpdated] = useState("just now");
@@ -1058,6 +1199,20 @@ export function DashboardClient({
   }, []);
   const weekendInfractions = useSWR<{ records: PastoralEntry[] }>(
     weekendInfractionsUrl,
+    fetcher,
+    { refreshInterval: REFRESH_MS },
+  );
+
+  const studyHallUrl = useMemo(() => {
+    const params = new URLSearchParams({
+      categories: STUDY_HALL_CATEGORIES.join(","),
+      watchlist: "1",
+      limit: "200",
+    });
+    return `/api/orah/pastoral-by-category?${params.toString()}`;
+  }, []);
+  const studyHall = useSWR<{ records: PastoralEntry[] }>(
+    studyHallUrl,
     fetcher,
     { refreshInterval: REFRESH_MS },
   );
@@ -1115,6 +1270,7 @@ export function DashboardClient({
       hc.mutate(),
       noPa.mutate(),
       weekendInfractions.mutate(),
+      studyHall.mutate(),
       servedSwr.mutate(),
       activities.mutate(),
       resources.mutate(),
@@ -1126,6 +1282,7 @@ export function DashboardClient({
     hc,
     noPa,
     weekendInfractions,
+    studyHall,
     servedSwr,
     activities,
     resources,
@@ -1231,6 +1388,7 @@ export function DashboardClient({
   const allStudents = hc.data?.students ?? [];
   const noPaStudents = noPa.data?.students ?? [];
   const weekendRecords = weekendInfractions.data?.records ?? [];
+  const studyHallRecords = studyHall.data?.records ?? [];
 
   const filteredStudents = useMemo(() => {
     if (active !== "hc" || !query.trim()) return allStudents;
@@ -1261,47 +1419,80 @@ export function DashboardClient({
     [weekendRecords, query, weekendDorm],
   );
 
+  const studyHallDorms = useMemo(
+    () => uniqueDorms(studyHallRecords),
+    [studyHallRecords],
+  );
+  const studyHallFiltered = useMemo(
+    () => filterInfractions(studyHallRecords, query, studyHallDorm),
+    [studyHallRecords, query, studyHallDorm],
+  );
+
   const allDorms = useMemo(() => {
     const set = new Set<string>();
     for (const s of allStudents) if (s.dorm) set.add(s.dorm);
     for (const s of noPaStudents) if (s.dorm) set.add(s.dorm);
     for (const r of weekendRecords) if (r.dorm) set.add(r.dorm);
+    for (const r of studyHallRecords) if (r.dorm) set.add(r.dorm);
     return Array.from(set).sort((a, b) => a.localeCompare(b));
-  }, [allStudents, noPaStudents, weekendRecords]);
+  }, [allStudents, noPaStudents, weekendRecords, studyHallRecords]);
 
-  const effectiveByDorm = byDorm || allDorms[0] || "";
+  // Effective selection: explicit picks if any, otherwise first dorm (so the
+  // tab shows something useful on first load).
+  const effectiveByDormSet = useMemo<ReadonlySet<string>>(() => {
+    if (byDormSet.size > 0) return byDormSet;
+    const fallback = allDorms[0];
+    return fallback ? new Set([fallback]) : new Set();
+  }, [byDormSet, allDorms]);
+
+  const effectiveByDormLabel = useMemo(() => {
+    const arr = Array.from(effectiveByDormSet);
+    if (arr.length === 0) return "";
+    if (arr.length === 1) return arr[0]!;
+    if (arr.length === 2) return arr.join(" + ");
+    return `${arr.length} dorms`;
+  }, [effectiveByDormSet]);
 
   const byDormHc = useMemo(() => {
-    if (!effectiveByDorm) return [];
-    let list = allStudents.filter((s) => s.dorm === effectiveByDorm);
+    if (effectiveByDormSet.size === 0) return [];
+    let list = allStudents.filter(
+      (s) => s.dorm && effectiveByDormSet.has(s.dorm),
+    );
     const q = query.trim().toLowerCase();
     if (q) {
       list = list.filter((s) =>
-        [s.name, s.initials, s.location, s.reason]
+        [s.name, s.initials, s.dorm, s.location, s.reason]
           .filter(Boolean)
           .some((v) => String(v).toLowerCase().includes(q)),
       );
     }
     return list;
-  }, [allStudents, effectiveByDorm, query]);
+  }, [allStudents, effectiveByDormSet, query]);
 
   const byDormNoPa = useMemo(() => {
-    if (!effectiveByDorm) return [];
-    let list = noPaStudents.filter((s) => s.dorm === effectiveByDorm);
+    if (effectiveByDormSet.size === 0) return [];
+    let list = noPaStudents.filter(
+      (s) => s.dorm && effectiveByDormSet.has(s.dorm),
+    );
     const q = query.trim().toLowerCase();
     if (q) {
       list = list.filter((s) =>
-        [s.name, s.initials, s.restriction, s.until]
+        [s.name, s.initials, s.dorm, s.restriction, s.until]
           .filter(Boolean)
           .some((v) => String(v).toLowerCase().includes(q)),
       );
     }
     return list;
-  }, [noPaStudents, effectiveByDorm, query]);
+  }, [noPaStudents, effectiveByDormSet, query]);
 
   const byDormWeekend = useMemo(
-    () => filterInfractions(weekendRecords, query, effectiveByDorm),
-    [weekendRecords, query, effectiveByDorm],
+    () => filterInfractionsByDorms(weekendRecords, query, effectiveByDormSet),
+    [weekendRecords, query, effectiveByDormSet],
+  );
+
+  const byDormStudyHall = useMemo(
+    () => filterInfractionsByDorms(studyHallRecords, query, effectiveByDormSet),
+    [studyHallRecords, query, effectiveByDormSet],
   );
 
   const events = activities.data?.events ?? [];
@@ -1316,13 +1507,17 @@ export function DashboardClient({
   }, [active, events, query]);
 
   const byDormStatCount =
-    byDormHc.length + byDormNoPa.length + byDormWeekend.length;
+    byDormHc.length +
+    byDormNoPa.length +
+    byDormWeekend.length +
+    byDormStudyHall.length;
 
   const counts: Record<TabKey, number> = {
     byDorm: byDormStatCount,
     hc: allStudents.length,
     noPa: noPaStudents.length,
     weekendInfractions: weekendRecords.length,
+    studyHall: studyHallRecords.length,
     activities: events.length,
   };
 
@@ -1335,9 +1530,11 @@ export function DashboardClient({
           ? filteredNoPa.length
           : active === "weekendInfractions"
             ? weekendFiltered.length
-            : active === "activities"
-              ? filteredEvents.length
-              : 0;
+            : active === "studyHall"
+              ? studyHallFiltered.length
+              : active === "activities"
+                ? filteredEvents.length
+                : 0;
 
   return (
     <div className="cr" data-density="balanced">
@@ -1354,7 +1551,7 @@ export function DashboardClient({
         active={active}
         onSelect={setActive}
         counts={counts}
-        byDormLabel={effectiveByDorm}
+        byDormLabel={effectiveByDormLabel}
       />
       <div className="cr-main cr-main--with-aside">
         <RosterShell
@@ -1369,26 +1566,37 @@ export function DashboardClient({
                 active={weekendDorm}
                 onSelect={setWeekendDorm}
               />
-            ) : active === "byDorm" ? (
+            ) : active === "studyHall" ? (
               <DormChips
+                dorms={studyHallDorms}
+                active={studyHallDorm}
+                onSelect={setStudyHallDorm}
+              />
+            ) : active === "byDorm" ? (
+              <MultiDormChips
                 dorms={allDorms}
-                active={effectiveByDorm}
-                onSelect={updateByDorm}
-                hideAll
-                label="Pick dorm"
+                selected={byDormSet}
+                onToggle={toggleByDorm}
+                onClear={clearByDorm}
+                label="Pick dorms"
               />
             ) : null
           }
         >
           {active === "byDorm" ? (
-            !hc.data || !noPa.data || !weekendInfractions.data ? (
+            !hc.data ||
+            !noPa.data ||
+            !weekendInfractions.data ||
+            !studyHall.data ? (
               <div className="cr-empty">Loading…</div>
             ) : (
               <ByDormTab
-                dorm={effectiveByDorm}
+                dormsLabel={effectiveByDormLabel}
+                hasSelection={effectiveByDormSet.size > 0}
                 hcStudents={byDormHc}
                 noPaStudents={byDormNoPa}
                 weekendRecords={byDormWeekend}
+                studyHallRecords={byDormStudyHall}
                 servedMap={servedMap}
                 onHcClick={(s) => setDrawer({ kind: "hc", item: s })}
                 onNoPaClick={(s) => setDrawer({ kind: "noPa", item: s })}
@@ -1425,6 +1633,17 @@ export function DashboardClient({
                 onCardClick={(e) => setDrawer({ kind: "infraction", item: e })}
                 servedMap={servedMap}
                 onToggleServed={handleToggleServed}
+              />
+            )
+          ) : active === "studyHall" ? (
+            !studyHall.data ? (
+              <div className="cr-empty">Loading…</div>
+            ) : (
+              <InfractionsTab
+                records={studyHallFiltered}
+                categories={STUDY_HALL_CATEGORIES}
+                emptyMessage="No outstanding Weekend Study Hall entries."
+                onCardClick={(e) => setDrawer({ kind: "infraction", item: e })}
               />
             )
           ) : active === "activities" ? (
