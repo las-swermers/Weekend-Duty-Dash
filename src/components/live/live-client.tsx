@@ -683,7 +683,7 @@ function InfractionsTab({
     for (const cat of categories) m.set(cat, []);
     for (const r of records) {
       const matchKey = categories.find(
-        (c) => c.toLowerCase() === r.category.toLowerCase(),
+        (c) => c.trim().toLowerCase() === r.category.trim().toLowerCase(),
       );
       if (!matchKey) continue;
       m.get(matchKey)!.push(r);
