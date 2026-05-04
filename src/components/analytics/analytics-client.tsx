@@ -338,6 +338,15 @@ export function AnalyticsClient({ defaultStart, viewerEmail }: Props) {
             value={topCategory?.count ?? 0}
             sub={topCategory?.category ?? "—"}
           />
+          <Stat
+            label="Time to serve · median"
+            value={formatDuration(agg.timeToServe.medianHours)}
+            sub={
+              agg.timeToServe.count
+                ? `avg ${formatDuration(agg.timeToServe.avgHours)} · n=${agg.timeToServe.count}`
+                : "no served items in window"
+            }
+          />
         </section>
       )}
 
@@ -376,6 +385,16 @@ export function AnalyticsClient({ defaultStart, viewerEmail }: Props) {
       />
     </div>
   );
+}
+
+function formatDuration(hours: number | null): string {
+  if (hours === null || !Number.isFinite(hours)) return "—";
+  if (hours < 1) {
+    const mins = Math.max(1, Math.round(hours * 60));
+    return `${mins}m`;
+  }
+  if (hours < 48) return `${hours.toFixed(1)}h`;
+  return `${(hours / 24).toFixed(1)}d`;
 }
 
 function Stat({
