@@ -1205,16 +1205,17 @@ export function DashboardClient({
 
   const studyHallUrl = useMemo(() => {
     // LAS doesn't toggle the watchlist boolean on Weekend Study Hall
-    // records (Orah's Watchlist sidebar is computed differently). Show
-    // every Weekend Study Hall pastoral record dated this weekend.
+    // records (Orah's Watchlist sidebar is computed differently). The
+    // pastoral record's date is when the infraction happened, not when
+    // the consequence is served, so a 14-day rolling window catches
+    // anything assigned within the past two weeks.
     const params = new URLSearchParams({
       categories: STUDY_HALL_CATEGORIES.join(","),
-      start: weekendRange.startISO,
-      end: weekendRange.endISO,
+      days: "14",
       limit: "200",
     });
     return `/api/orah/pastoral-by-category?${params.toString()}`;
-  }, [weekendRange.startISO, weekendRange.endISO]);
+  }, []);
   const studyHall = useSWR<{ records: PastoralEntry[] }>(
     studyHallUrl,
     fetcher,
