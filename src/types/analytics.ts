@@ -17,6 +17,7 @@ export interface EnrichedPastoral {
   action: string;
   note: string;
   watchlist: boolean;
+  watchlistExpiry: string | null;
   sensitive: boolean;
   studentId: number;
   studentName: string;
@@ -25,6 +26,19 @@ export interface EnrichedPastoral {
   house: string | null;
   houseId: number | null;
   createdBy: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// Proxy "time to serve": for records that were placed on the watchlist
+// (watchlist_expiry is set) and are no longer on it, treat updated_at as
+// the moment a staff member cleared the flag in Orah. Imperfect — any
+// later edit to the record drifts the number — but useful as a directional
+// KPI without extra storage.
+export interface TimeToServeStats {
+  count: number;
+  medianHours: number | null;
+  avgHours: number | null;
 }
 
 export interface PastoralAggregations {
@@ -35,6 +49,7 @@ export interface PastoralAggregations {
   byDay: Array<{ day: string; count: number }>;
   watchlistCount: number;
   sensitiveCount: number;
+  timeToServe: TimeToServeStats;
 }
 
 export interface PastoralResponse {

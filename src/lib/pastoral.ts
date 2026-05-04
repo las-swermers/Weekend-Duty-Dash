@@ -86,6 +86,38 @@ export async function getPastoralMeta(
   };
 }
 
+function computeTimeToServe(records: EnrichedPastoral[]): {
+  count: number;
+  medianHours: number | null;
+  avgHours: number | null;
+} {
+  const hours: number[] = [];
+  for (const r of records) {
+    // Proxy: record was placed on the watchlist (expiry set) and is no
+    // longer on it. Skip auto-expirations — if the last edit happened at
+    // or after the expiry, it likely rolled off on its own rather than
+    // being served by a staff member.
+    if (r.watchlist) continue;
+    if (!r.watchlistExpiry) continue;
+    const created = Date.parse(r.createdAt);
+    const updated = Date.parse(r.updatedAt);
+    const expiry = Date.parse(r.watchlistExpiry);
+    if (!Number.isFinite(created) || !Number.isFinite(updated)) continue;
+    if (updated <= created) continue;
+    if (Number.isFinite(expiry) && updated >= expiry) continue;
+    hours.push((updated - created) / 3_600_000);
+  }
+  if (hours.length === 0) {
+    return { count: 0, medianHours: null, avgHours: null };
+  }
+  const sorted = [...hours].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  const median =
+    sorted.length % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid];
+  const avg = hours.reduce((s, n) => s + n, 0) / hours.length;
+  return { count: hours.length, medianHours: median, avgHours: avg };
+}
+
 function aggregate(records: EnrichedPastoral[]): PastoralAggregations {
   const byCat = new Map<string, number>();
   const byHouse = new Map<string, number>();
@@ -127,6 +159,7 @@ function aggregate(records: EnrichedPastoral[]): PastoralAggregations {
     ),
     watchlistCount,
     sensitiveCount,
+    timeToServe: computeTimeToServe(records),
   };
 }
 
@@ -219,6 +252,7 @@ export async function queryPastoral(
       action: r.action ?? "",
       note: r.note ?? "",
       watchlist: !!r.watchlist,
+      watchlistExpiry: r.watchlist_expiry ?? null,
       sensitive: !!r.sensitive,
       studentId: r.student.id,
       studentName: full,
@@ -227,6 +261,8 @@ export async function queryPastoral(
       house,
       houseId,
       createdBy: r.created_by?.name ?? null,
+      createdAt: r.created_at,
+      updatedAt: r.updated_at,
     });
   }
 
