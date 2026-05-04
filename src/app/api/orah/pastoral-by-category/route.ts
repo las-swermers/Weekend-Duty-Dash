@@ -102,7 +102,7 @@ export async function GET(req: NextRequest) {
 
     const filtered = records
       .filter((r) => {
-        const name = r.pastoral_category?.name?.toLowerCase();
+        const name = r.pastoral_category?.name?.trim().toLowerCase();
         if (!name || !targetSet.has(name)) return false;
         if (watchlistOnly) {
           if (!r.watchlist) return false;

@@ -140,7 +140,7 @@ const TABS: Tab[] = [
     key: "studyHall",
     label: "Study",
     titleEm: "Hall",
-    sub: "weekend study hall watchlist",
+    sub: "this weekend",
     searchPlaceholder: "Search study hall…",
     unit: "ENTRIES",
   },
@@ -1204,16 +1204,17 @@ export function DashboardClient({
   );
 
   const studyHallUrl = useMemo(() => {
-    // Watchlist flags persist most of the school year, so the originating
-    // pastoral record is often older than the route's 180-day default.
+    // LAS doesn't toggle the watchlist boolean on Weekend Study Hall
+    // records (Orah's Watchlist sidebar is computed differently). Show
+    // every Weekend Study Hall pastoral record dated this weekend.
     const params = new URLSearchParams({
       categories: STUDY_HALL_CATEGORIES.join(","),
-      watchlist: "1",
-      days: "365",
+      start: weekendRange.startISO,
+      end: weekendRange.endISO,
       limit: "200",
     });
     return `/api/orah/pastoral-by-category?${params.toString()}`;
-  }, []);
+  }, [weekendRange.startISO, weekendRange.endISO]);
   const studyHall = useSWR<{ records: PastoralEntry[] }>(
     studyHallUrl,
     fetcher,
