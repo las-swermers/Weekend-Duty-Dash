@@ -2417,3 +2417,372 @@ details[open] > .analytics-filters__summary::before { content: "▾ "; }
   }
   .cr-drawer__photo { width: 64px; height: 64px; font-size: 24px; }
 }
+
+/* ── Warnings review tab ─────────────────────────────────────────── */
+
+.cr-warn-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 0 0 12px;
+  border-bottom: 1px solid var(--rule-soft);
+  margin-bottom: 12px;
+}
+
+.cr-warn-weeknav {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.cr-warn-weeknav__label {
+  font-family: var(--serif);
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--ink);
+  min-width: 190px;
+  text-align: center;
+}
+
+.cr-warn-bar__actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.cr-warn-bar__actions .btn { display: inline-flex; align-items: center; gap: 6px; }
+
+.cr-warn-notice {
+  font-size: 12.5px;
+  line-height: 1.5;
+  padding: 8px 12px;
+  margin-bottom: 12px;
+  border-left: 3px solid var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent-ink);
+  border-radius: var(--radius);
+}
+
+.cr-warn-notice--muted {
+  border-left-color: var(--ink-4);
+  background: var(--paper-2);
+  color: var(--ink-3);
+}
+
+.cr-warn-notice code {
+  font-family: var(--mono);
+  font-size: 11.5px;
+}
+
+.cr-warn-foot {
+  margin-top: 14px;
+  padding-top: 10px;
+  border-top: 1px solid var(--rule-soft);
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.02em;
+  color: var(--ink-4);
+}
+
+/* Level badges */
+.cr-warn-badge {
+  display: inline-block;
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 2px 7px;
+  border-radius: var(--radius);
+  white-space: nowrap;
+  margin-left: 8px;
+}
+.cr-warn-badge--low  { background: var(--paper-3); color: var(--ink-3); }
+.cr-warn-badge--mid  { background: var(--amber-soft); color: var(--amber-ink); }
+.cr-warn-badge--high { background: var(--coral-soft); color: var(--coral-ink); }
+.cr-warn-badge--done { background: var(--moss-soft); color: var(--moss); }
+
+/* Row bits */
+.cr-warn-row__avatar {
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  color: #fff;
+}
+
+.cr-warn-row__name {
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+.cr-warn-row__name:hover { text-decoration: underline; }
+
+.cr-warn-row__preview {
+  margin-top: 6px;
+  display: grid;
+  gap: 3px;
+}
+
+.cr-warn-row__line {
+  display: grid;
+  grid-template-columns: 78px 1fr;
+  gap: 8px;
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--ink-2);
+}
+
+.cr-warn-row__when {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--ink-4);
+  white-space: nowrap;
+}
+
+/* Drawer body */
+.cr-warn-drawer__summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  padding-bottom: 12px;
+  margin-bottom: 4px;
+  border-bottom: 1px solid var(--rule-soft);
+}
+.cr-warn-drawer__summary .cr-warn-badge { margin-left: 0; }
+
+.cr-warn-drawer__stat {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--ink-3);
+}
+
+.cr-warn-drawer__override {
+  font-size: 12px;
+  color: var(--amber-ink);
+  background: var(--amber-soft);
+  padding: 6px 10px;
+  border-radius: var(--radius);
+  margin: 10px 0;
+}
+
+.cr-warn-drawer__heading {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-4);
+  margin: 16px 0 8px;
+}
+
+.cr-warn-item {
+  padding: 9px 0;
+  border-bottom: 1px solid var(--rule-soft);
+}
+.cr-warn-item:last-child { border-bottom: none; }
+
+.cr-warn-item__desc {
+  font-size: 13.5px;
+  line-height: 1.5;
+  color: var(--ink);
+}
+
+.cr-warn-item__extra {
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--ink-2);
+  margin-top: 3px;
+}
+
+.cr-warn-item__meta {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  color: var(--ink-4);
+  margin-top: 5px;
+}
+
+/* ── Printable weekly warnings report ────────────────────────────── */
+
+.wr {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 32px 28px 60px;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--sans);
+}
+
+.wr__toolbar {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+  margin-bottom: 24px;
+}
+
+.wr__hint { font-size: 12px; color: var(--ink-3); }
+
+.wr__head {
+  border-bottom: 2px solid var(--ink);
+  padding-bottom: 14px;
+  margin-bottom: 22px;
+}
+
+.wr__crest {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+
+.wr__title {
+  font-family: var(--serif);
+  font-size: 26px;
+  font-weight: 700;
+  margin: 6px 0 4px;
+}
+
+.wr__sub { font-size: 13px; color: var(--ink-2); }
+
+.wr__foot {
+  margin-top: 28px;
+  padding-top: 10px;
+  border-top: 1px solid var(--rule);
+  font-family: var(--mono);
+  font-size: 10.5px;
+  color: var(--ink-4);
+}
+
+.wr-student {
+  padding: 16px 0 18px;
+  border-bottom: 1px solid var(--rule);
+}
+
+.wr-student__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.wr-student__name {
+  font-family: var(--serif);
+  font-size: 17px;
+  font-weight: 700;
+  margin: 0;
+}
+
+.wr-student__level {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--accent-ink);
+  white-space: nowrap;
+}
+
+.wr-student__meta {
+  font-size: 12px;
+  color: var(--ink-3);
+  margin-top: 3px;
+}
+
+.wr-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 10px;
+  font-size: 12.5px;
+}
+
+.wr-table th {
+  text-align: left;
+  font-family: var(--mono);
+  font-size: 9.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-4);
+  border-bottom: 1px solid var(--rule);
+  padding: 0 8px 4px 0;
+  font-weight: 600;
+}
+
+.wr-table td {
+  vertical-align: top;
+  padding: 5px 8px 5px 0;
+  border-bottom: 1px solid var(--rule-soft);
+  line-height: 1.45;
+}
+
+.wr-table__when { width: 128px; white-space: nowrap; color: var(--ink-3); }
+.wr-table__who  { width: 132px; color: var(--ink-3); }
+
+.wr-student__logged {
+  margin-top: 10px;
+  font-size: 12.5px;
+  line-height: 1.5;
+  padding: 7px 10px;
+  background: var(--paper-2);
+  border-left: 3px solid var(--moss);
+}
+
+.wr-student__notes { margin-top: 14px; }
+
+.wr-student__notes-label {
+  font-family: var(--mono);
+  font-size: 9.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-4);
+  margin-bottom: 10px;
+}
+
+/* Blank ruled lines to write the conversation on by hand. */
+.wr-rule {
+  border-bottom: 1px solid var(--rule);
+  height: 26px;
+}
+
+.wr-sign {
+  margin-top: 12px;
+  font-size: 11.5px;
+  color: var(--ink-4);
+}
+
+@media print {
+  .no-print { display: none !important; }
+
+  html, body {
+    background: #fff;
+    color: #000;
+  }
+
+  .wr {
+    max-width: none;
+    padding: 0;
+    background: #fff;
+  }
+
+  /* Never split a student across a page — the sheet gets written on. */
+  .wr-student {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  .wr__head { break-after: avoid; }
+
+  a[href]::after { content: ""; }
+
+  @page { margin: 16mm; }
+}
+
+@media (max-width: 640px) {
+  .cr-warn-weeknav__label { min-width: 0; font-size: 13.5px; }
+  .cr-warn-bar { flex-direction: column; align-items: stretch; }
+  .cr-warn-row__line { grid-template-columns: 1fr; gap: 0; }
+}

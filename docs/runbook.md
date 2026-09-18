@@ -325,3 +325,76 @@ If the env var isn't set, the app tries to match by name using
 `HEALTH_CENTER_LOCATION_NAME` (default "Health Center"). If multiple
 locations match or none match, the HC route returns an error
 explaining what to do.
+
+## Wiring the Warnings review sheet
+
+The Warnings tab on `/live` lists Orah `Infraction → Warning` records for one
+week and lets dorm staff tick off the follow-up conversation. **The Google
+Sheet is the source of truth** for those tick-offs, written responses and
+level overrides — unlike the clipboard sheet, which is only a mirror of KV.
+If a write to the sheet fails, the app reports an error rather than showing a
+tick that exists nowhere.
+
+### 1. Confirm the Orah category name
+
+Category filtering matches on `pastoral_category.name`, so the string has to
+be right or the tab is silently empty. Sign in and hit:
+
+```
+/api/orah/pastoral-categories?days=90
+```
+
+Find the warnings bucket in the response. If it is not literally `Warning` or
+`Warnings`, set `WARNINGS_CATEGORY_NAMES` to a CSV of the real name(s).
+
+If instead **everything collapses into one `Infraction` bucket**, Orah is
+returning the parent rather than the leaf. Dump a raw record via
+`/api/orah/diagnose`, find the field holding the sub-category, and match on
+that in `src/lib/warnings.ts`.
+
+### 2. Create the sheet
+
+1. New Google Sheet, e.g. "Dorm Warnings Review".
+2. Share → add `GOOGLE_SERVICE_ACCOUNT_EMAIL` with **Editor** (not Viewer —
+   the app writes to it).
+3. Copy the id out of the URL:
+   `https://docs.google.com/spreadsheets/d/<THIS_BIT>/edit`
+4. Set `WARNINGS_SHEET_ID` on Vercel.
+
+The `Conversations` tab and its header row are created automatically on the
+first tick-off. Columns:
+
+| Key | Student ID | Student | Dorm | Week | Status | Level override | Conversation date | Logged by | Response | Updated at |
+|---|---|---|---|---|---|---|---|---|---|---|
+
+`Key` is `<studentId>|<weekMonday>` and is what the app upserts against —
+don't reorder or rename columns, and don't edit column A by hand.
+
+### 3. Editing by hand
+
+Staff can edit the sheet directly; changes appear on the dashboard within
+about 30 seconds (reads are cached for 30s under the `warnings-log` tag and
+every app write busts it). Useful edits:
+
+- **Response** — rewrite what was said.
+- **Status** — set to `pending` to un-tick. Anything else counts as done.
+- **Level override** — a number here wins over the calculated level, and the
+  dashboard labels it as an override. Clear the cell to go back to automatic.
+
+### 4. Weekly report
+
+*Print report* opens `/warnings/report?week=…&dorm=…`, a print-styled page
+with ruled blank lines under each student — ⌘P to save as PDF.
+
+*Push to Sheet* writes a `Week YYYY-MM-DD` tab (suffixed with the dorm when
+filtered) into the same spreadsheet. Re-running for the same week **clears and
+rewrites** that tab rather than duplicating it.
+
+### Troubleshooting
+
+| Symptom | Cause |
+|---|---|
+| Tab lists nothing at all | `WARNINGS_CATEGORY_NAMES` doesn't match Orah — re-run step 1. |
+| "Read-only: no warnings sheet configured" | `WARNINGS_SHEET_ID` or the service-account vars are unset. |
+| Tick-off returns 403 | The sheet is shared with the service account as Viewer, not Editor. |
+| A student is missing | They had no warning *in that week*; the board only lists the week's warnings. Their history still counts toward the level. |
