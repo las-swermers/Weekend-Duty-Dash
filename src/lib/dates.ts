@@ -165,3 +165,81 @@ export function formatWeekendLabel(range: WeekendRange): string {
   }).format(range.end);
   return `${startStr}–${endDay}, ${year}`;
 }
+
+// ─── Warnings review (weekly) ────────────────────────────────────────────
+
+// Orah nests this as Infraction → Warning. Filtering across this app matches
+// on pastoral_category.name, so accept a couple of spellings by default and
+// let WARNINGS_CATEGORY_NAMES override if the tenant renames it.
+export const DEFAULT_WARNINGS_CATEGORIES = ["Warning", "Warnings"];
+
+export function warningsCategories(): string[] {
+  const raw = process.env.WARNINGS_CATEGORY_NAMES;
+  if (!raw || !raw.trim()) return DEFAULT_WARNINGS_CATEGORIES;
+  const parsed = raw
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+  return parsed.length > 0 ? parsed : DEFAULT_WARNINGS_CATEGORIES;
+}
+
+// Monday 00:00 → Sunday 23:59:59.999 Europe/Zurich. `offset` shifts whole
+// weeks: -1 is last week, +1 next week.
+export function weekRange(now: Date = new Date(), offset = 0): WeekendRange {
+  const local = new TZDate(now, TZ);
+  const day = local.getDay(); // 0 Sun … 1 Mon … 6 Sat
+  const daysSinceMonday = (day + 6) % 7;
+
+  const start = new TZDate(local, TZ);
+  start.setDate(local.getDate() - daysSinceMonday + offset * 7);
+  start.setHours(0, 0, 0, 0);
+
+  const end = new TZDate(start, TZ);
+  end.setDate(start.getDate() + 6);
+  end.setHours(23, 59, 59, 999);
+
+  return { start, end };
+}
+
+// The Monday of a date's week as YYYY-MM-DD in Europe/Zurich. This is the
+// stable key used in the conversation sheet and in report tab titles.
+export function weekKey(d: Date = new Date()): string {
+  const { start } = weekRange(d);
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: TZ,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(start);
+}
+
+export function isWeekKey(s: string | null | undefined): s is string {
+  return typeof s === "string" && /^\d{4}-\d{2}-\d{2}$/.test(s);
+}
+
+// Expand a "2026-09-14" key back into its Mon→Sun range. Parsed at midday UTC
+// so the Zurich offset can never roll the date onto the neighbouring day.
+export function weekKeyToRange(key: string): WeekendRange {
+  const parsed = Date.parse(`${key}T12:00:00Z`);
+  if (!Number.isFinite(parsed)) {
+    throw new Error(`Invalid week key: ${key}`);
+  }
+  return weekRange(new Date(parsed));
+}
+
+// "15–21 September 2026", collapsing the month when the week doesn't span one.
+export function formatWeekLabel(range: WeekendRange): string {
+  const dayFmt = new Intl.DateTimeFormat("en-GB", { timeZone: TZ, day: "numeric" });
+  const monthFmt = new Intl.DateTimeFormat("en-GB", { timeZone: TZ, month: "long" });
+  const yearFmt = new Intl.DateTimeFormat("en-GB", { timeZone: TZ, year: "numeric" });
+
+  const startDay = dayFmt.format(range.start);
+  const endDay = dayFmt.format(range.end);
+  const startMonth = monthFmt.format(range.start);
+  const endMonth = monthFmt.format(range.end);
+  const year = yearFmt.format(range.end);
+
+  return startMonth === endMonth
+    ? `${startDay}–${endDay} ${endMonth} ${year}`
+    : `${startDay} ${startMonth} – ${endDay} ${endMonth} ${year}`;
+}

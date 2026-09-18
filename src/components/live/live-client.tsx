@@ -8,8 +8,16 @@ import useSWR from "swr";
 import { Icon, LASCrest } from "@/components/dashboard/icon";
 import { Toast } from "@/components/dashboard/toast";
 import type { PastoralEntry } from "@/components/shared/pastoral-row";
+import {
+  formatCheckIn,
+  formatDate,
+  formatDateTime,
+  formatDuration,
+  formatTime,
+  photoGradient,
+} from "@/components/live/format";
+import { WarningsTab } from "@/components/live/warnings-tab";
 import { signOutAction } from "@/lib/auth-actions";
-import type { CalendarEvent } from "@/lib/google-calendar";
 
 interface Props {
   userName: string | null;
@@ -31,12 +39,6 @@ interface DormNotesResponse {
   notes: DormNote[];
   configured: boolean;
   categoryName?: string;
-}
-
-interface ActivitiesResponse {
-  events: CalendarEvent[];
-  configured: boolean;
-  error?: string;
 }
 
 type DrawerState =
@@ -61,7 +63,6 @@ interface HCStudent {
 }
 
 const REFRESH_MS = 30_000;
-const TZ = "Europe/Zurich";
 
 const fetcher = async <T,>(url: string): Promise<T> => {
   const res = await fetch(url);
@@ -69,76 +70,7 @@ const fetcher = async <T,>(url: string): Promise<T> => {
   return res.json() as Promise<T>;
 };
 
-function hueFromString(s: string): number {
-  let h = 0;
-  for (let i = 0; i < s.length; i++) {
-    h = (h * 31 + s.charCodeAt(i)) >>> 0;
-  }
-  return h % 360;
-}
-
-function photoGradient(seed: string): string {
-  const hue = hueFromString(seed);
-  return `linear-gradient(160deg, hsl(${hue}, 38%, 32%) 0%, hsl(${(hue + 30) % 360}, 42%, 22%) 100%)`;
-}
-
-function formatTime(iso: string): string {
-  return new Intl.DateTimeFormat("en-GB", {
-    timeZone: TZ,
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  }).format(new Date(iso));
-}
-
-function formatCheckIn(iso: string): string {
-  return new Intl.DateTimeFormat("en-GB", {
-    timeZone: TZ,
-    weekday: "short",
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  }).format(new Date(iso));
-}
-
-function formatDuration(min: number): string {
-  if (min < 60) return `${min}m`;
-  const h = Math.floor(min / 60);
-  const m = min % 60;
-  return m === 0 ? `${h}h` : `${h}h ${m}m`;
-}
-
-function formatDate(iso: string): string {
-  return new Intl.DateTimeFormat("en-GB", {
-    timeZone: TZ,
-    weekday: "short",
-    day: "numeric",
-    month: "short",
-  }).format(new Date(iso));
-}
-
-function formatDateTime(iso: string): string {
-  return new Intl.DateTimeFormat("en-GB", {
-    timeZone: TZ,
-    weekday: "short",
-    day: "numeric",
-    month: "short",
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  }).format(new Date(iso));
-}
-
-function dayKey(iso: string): string {
-  return new Intl.DateTimeFormat("en-CA", {
-    timeZone: TZ,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(new Date(iso));
-}
-
-type TabKey = "byDorm" | "hc" | "today" | "weekend" | "activities";
+type TabKey = "byDorm" | "hc" | "today" | "weekend" | "warnings";
 
 interface Tab {
   key: TabKey;
@@ -183,12 +115,12 @@ const TABS: Tab[] = [
     unit: "ENTRIES",
   },
   {
-    key: "activities",
-    label: "Activities",
-    titleEm: "Calendar",
-    sub: "upcoming events",
-    searchPlaceholder: "Search events…",
-    unit: "EVENTS",
+    key: "warnings",
+    label: "Warnings",
+    titleEm: "Review",
+    sub: "weekly follow-up",
+    searchPlaceholder: "Search students…",
+    unit: "STUDENTS",
   },
 ];
 
@@ -306,14 +238,16 @@ function StatsStrip({
 }: {
   active: TabKey;
   onSelect: (k: TabKey) => void;
-  counts: Record<TabKey, number>;
+  // null = not known yet (the Warnings tab owns its own fetch and only
+  // reports once mounted). Rendered as — rather than a misleading 00.
+  counts: Record<TabKey, number | null>;
   byDormLabel: string;
 }) {
   return (
     <div className="cr-stats" role="tablist">
       {TABS.map((t) => {
         const n = counts[t.key];
-        const sev = severity(n);
+        const sev = severity(n ?? 0);
         const isActive = active === t.key;
         const sub = t.key === "byDorm" && byDormLabel ? byDormLabel : t.sub;
         return (
@@ -332,7 +266,9 @@ function StatsStrip({
               </div>
               <div className="cr-stat__sub">{sub}</div>
             </div>
-            <div className="cr-stat__num">{String(n).padStart(2, "0")}</div>
+            <div className="cr-stat__num">
+              {n === null ? "—" : String(n).padStart(2, "0")}
+            </div>
           </button>
         );
       })}
@@ -854,80 +790,6 @@ function ByDormTab({
   );
 }
 
-// ─── Activities tab ──────────────────────────────────────────────
-
-function ActivitiesTab({
-  events,
-  configured,
-  error,
-}: {
-  events: CalendarEvent[];
-  configured: boolean;
-  error?: string;
-}) {
-  const groups = useMemo(() => {
-    const m = new Map<string, CalendarEvent[]>();
-    for (const e of events) {
-      const k = dayKey(e.start);
-      if (!m.has(k)) m.set(k, []);
-      m.get(k)!.push(e);
-    }
-    return m;
-  }, [events]);
-
-  const dayKeys = useMemo(
-    () => Array.from(groups.keys()).sort(),
-    [groups],
-  );
-
-  if (!configured) {
-    return (
-      <div className="cr-empty">
-        Calendar not configured. Set GOOGLE_CALENDAR_ID and share with the
-        service account.
-      </div>
-    );
-  }
-  if (error) return <div className="cr-empty">Calendar error: {error}</div>;
-  if (events.length === 0) {
-    return <div className="cr-empty">No events scheduled.</div>;
-  }
-
-  return (
-    <>
-      {dayKeys.map((k) => {
-        const list = groups.get(k) ?? [];
-        return (
-          <div key={k} className="cr-cal-day">
-            <div className="cr-cal-day__head">
-              {formatDate(list[0]!.start)}
-            </div>
-            {list.map((e) => (
-              <div key={e.id} className="cr-cal-row">
-                <div className="cr-cal-row__time">
-                  {e.allDay
-                    ? "All day"
-                    : `${formatTime(e.start)}–${formatTime(e.end)}`}
-                </div>
-                <div>
-                  <div className="cr-cal-row__title">{e.summary}</div>
-                  {(e.location || e.description) && (
-                    <div className="cr-cal-row__sub">
-                      {e.location && <span>{e.location}</span>}
-                      {e.location && e.description && " · "}
-                      {e.description && <span>{e.description}</span>}
-                    </div>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
-        );
-      })}
-    </>
-  );
-}
-
 // ─── Detail drawer ───────────────────────────────────────────────
 
 function Drawer({
@@ -1027,6 +889,9 @@ function Drawer({
 
 export function LiveClient(props: Props) {
   const [active, setActive] = useState<TabKey>("byDorm");
+  // Owned by WarningsTab (it holds its own week/dorm state and SWR);
+  // lifted here so the stats strip and roster header can show the count.
+  const [warningsCount, setWarningsCount] = useState<number | null>(null);
   const [query, setQuery] = useState("");
   const [todayDorm, setTodayDorm] = useState("all");
   const [weekendDorm, setWeekendDorm] = useState("all");
@@ -1138,12 +1003,6 @@ export function LiveClient(props: Props) {
     { refreshInterval: REFRESH_MS },
   );
 
-  const activities = useSWR<ActivitiesResponse>(
-    "/api/calendar/events?days=3",
-    fetcher,
-    { refreshInterval: 5 * 60_000 },
-  );
-
   useEffect(() => {
     const id = setInterval(
       () => setNow(formatTime(new Date().toISOString())),
@@ -1164,12 +1023,11 @@ export function LiveClient(props: Props) {
       todayInfractions.mutate(),
       weekendInfractions.mutate(),
       dormNotes.mutate(),
-      activities.mutate(),
     ]);
     setRefreshing(false);
     setToast("Refreshed");
     window.setTimeout(() => setToast(null), 2000);
-  }, [hc, todayInfractions, weekendInfractions, dormNotes, activities]);
+  }, [hc, todayInfractions, weekendInfractions, dormNotes]);
 
   const allStudents = hc.data?.students ?? [];
   const hcInNow = allStudents.filter((s) => s.status === "in").length;
@@ -1248,28 +1106,17 @@ export function LiveClient(props: Props) {
     [weekendRecords, query, effectiveByDormSet],
   );
 
-  const events = activities.data?.events ?? [];
-  const filteredEvents = useMemo(() => {
-    if (active !== "activities" || !query.trim()) return events;
-    const q = query.toLowerCase();
-    return events.filter((e) =>
-      [e.summary, e.location, e.description]
-        .filter(Boolean)
-        .some((v) => String(v).toLowerCase().includes(q)),
-    );
-  }, [active, events, query]);
-
   const byDormStatCount =
     byDormStudents.filter((s) => s.status === "in").length +
     byDormToday.length +
     byDormWeekend.length;
 
-  const counts: Record<TabKey, number> = {
+  const counts: Record<TabKey, number | null> = {
     hc: hcInNow,
     today: todayRecords.length,
     weekend: weekendRecords.length,
     byDorm: byDormStatCount,
-    activities: events.length,
+    warnings: warningsCount,
   };
 
   const rosterCount =
@@ -1279,11 +1126,9 @@ export function LiveClient(props: Props) {
         ? todayFiltered.length
         : active === "weekend"
           ? weekendFiltered.length
-          : active === "byDorm"
-            ? byDormStudents.length + byDormToday.length + byDormWeekend.length
-            : active === "activities"
-              ? filteredEvents.length
-              : 0;
+          : active === "warnings"
+            ? warningsCount ?? 0
+            : byDormStudents.length + byDormToday.length + byDormWeekend.length;
 
   return (
     <div className="cr" data-density="balanced">
@@ -1386,27 +1231,19 @@ export function LiveClient(props: Props) {
                 onCardClick={(e) => setDrawer({ kind: "infraction", item: e })}
               />
             )
-          ) : active === "byDorm" ? (
-            !hc.data || !todayInfractions.data || !weekendInfractions.data ? (
-              <div className="cr-empty">Loading…</div>
-            ) : (
-              <ByDormTab
-                dormsLabel={effectiveByDormLabel}
-                hasSelection={effectiveByDormSet.size > 0}
-                hcStudents={byDormStudents}
-                todayRecords={byDormToday}
-                weekendRecords={byDormWeekend}
-                onHcClick={(s) => setDrawer({ kind: "hc", item: s })}
-                onInfClick={(e) => setDrawer({ kind: "infraction", item: e })}
-              />
-            )
-          ) : !activities.data ? (
+          ) : active === "warnings" ? (
+            <WarningsTab query={query} onCount={setWarningsCount} />
+          ) : !hc.data || !todayInfractions.data || !weekendInfractions.data ? (
             <div className="cr-empty">Loading…</div>
           ) : (
-            <ActivitiesTab
-              events={filteredEvents}
-              configured={activities.data.configured}
-              error={activities.data.error}
+            <ByDormTab
+              dormsLabel={effectiveByDormLabel}
+              hasSelection={effectiveByDormSet.size > 0}
+              hcStudents={byDormStudents}
+              todayRecords={byDormToday}
+              weekendRecords={byDormWeekend}
+              onHcClick={(s) => setDrawer({ kind: "hc", item: s })}
+              onInfClick={(e) => setDrawer({ kind: "infraction", item: e })}
             />
           )}
         </RosterShell>
