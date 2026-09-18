@@ -29,6 +29,14 @@ function when(iso: string): string {
   }).format(new Date(iso));
 }
 
+// Mirror the tab: the count is right either way, but "since last talk" is
+// misleading when there has never been a talk.
+function unaddressed(s: WarningStudent): string {
+  return s.lastConversationAt
+    ? `${s.warningsSinceLastConversation} since last conversation`
+    : `${s.warningsSinceLastConversation} unaddressed`;
+}
+
 function levelText(s: WarningStudent): string {
   if (s.effectiveLevel <= 0) return "Watching";
   if (s.dueNow) {
@@ -119,8 +127,7 @@ export default async function WarningsReportPage({
             <div className="wr-student__meta">
               {s.dorm}
               {s.yearLevel ? ` · Year ${s.yearLevel}` : ""} ·{" "}
-              {s.warningsThisWeek.length} this week ·{" "}
-              {s.warningsSinceLastConversation} since last conversation ·{" "}
+              {s.warningsThisWeek.length} this week · {unaddressed(s)} ·{" "}
               {s.termWarningCount} this term
               {s.lastConversationAt
                 ? ` · last talk ${when(s.lastConversationAt)}`
@@ -170,6 +177,27 @@ export default async function WarningsReportPage({
           </section>
         ))
       )}
+
+      <section className="wr-legend">
+        <div className="wr-legend__title">How levels are decided</div>
+        <dl className="wr-legend__list">
+          <dt>Watching</dt>
+          <dd>
+            Fewer than {data.meta.threshold} unaddressed warnings — no action.
+          </dd>
+          <dt>Level 1 due</dt>
+          <dd>
+            {data.meta.threshold}+ warnings with no conversation logged — have
+            the talk.
+          </dd>
+          <dt>Level 1 · done</dt>
+          <dd>Conversation logged, quiet since.</dd>
+          <dt>Level 2 — escalate</dt>
+          <dd>
+            {data.meta.threshold}+ further warnings after a logged conversation.
+          </dd>
+        </dl>
+      </section>
 
       <footer className="wr__foot">
         Generated {when(data.meta.pulledAt)} · source: Orah pastoral records (

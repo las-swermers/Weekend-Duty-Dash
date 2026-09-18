@@ -2503,45 +2503,180 @@ details[open] > .analytics-filters__summary::before { content: "▾ "; }
 .cr-warn-badge--high { background: var(--coral-soft); color: var(--coral-ink); }
 .cr-warn-badge--done { background: var(--moss-soft); color: var(--moss); }
 
-/* Row bits */
-.cr-warn-row__avatar {
-  border: none;
+/* Cards — reuse .cr-serve__group / __group-body from the infractions tabs so
+   this tab lays out the same way (multiple cards per row, auto-reflowing). */
+.cr-warn-card {
+  position: relative;
+  border-right: 1px solid var(--rule);
+  border-bottom: 1px solid var(--rule);
+  transition: background 120ms ease;
+}
+.cr-warn-card:hover { background: var(--paper-2); }
+.cr-warn-card--done { background: var(--moss-soft); }
+.cr-warn-card--done:hover { background: var(--moss-soft); }
+
+.cr-warn-card__check {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 1;
+  display: inline-flex;
   cursor: pointer;
-  padding: 0;
-  color: #fff;
+}
+.cr-warn-card__check input {
+  width: 20px;
+  height: 20px;
+  cursor: pointer;
+  accent-color: var(--ink);
 }
 
-.cr-warn-row__name {
-  background: none;
+/* The whole card body is the drawer hit target. The checkbox sits outside it
+   because a checkbox cannot be nested inside a button. */
+.cr-warn-card__hit {
+  display: grid;
+  grid-template-columns: 36px 1fr;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 34px 12px 14px;
+  background: transparent;
   border: none;
-  padding: 0;
+  text-align: left;
   font: inherit;
   color: inherit;
   cursor: pointer;
-  text-align: left;
-}
-.cr-warn-row__name:hover { text-decoration: underline; }
-
-.cr-warn-row__preview {
-  margin-top: 6px;
-  display: grid;
-  gap: 3px;
 }
 
-.cr-warn-row__line {
+.cr-warn-card__name {
+  font-family: var(--serif);
+  font-weight: 700;
+  font-size: 13px;
+  color: var(--ink);
+  line-height: 1.25;
+  letter-spacing: -0.005em;
+}
+
+.cr-warn-card__stats {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  color: var(--ink-3);
+  margin-top: 2px;
+}
+
+.cr-warn-card__lines {
   display: grid;
-  grid-template-columns: 78px 1fr;
-  gap: 8px;
-  font-size: 12.5px;
+  gap: 4px;
+  margin: 7px 0 8px;
+}
+
+.cr-warn-card__line {
+  display: grid;
+  grid-template-columns: 62px 1fr;
+  grid-template-areas: "when what" "when who";
+  gap: 0 8px;
+  font-size: 11.5px;
+  line-height: 1.35;
+  color: var(--ink-2);
+}
+
+.cr-warn-card__when {
+  grid-area: when;
+  font-family: var(--mono);
+  font-size: 9.5px;
+  letter-spacing: 0.04em;
+  color: var(--ink-4);
+  white-space: nowrap;
+  padding-top: 1px;
+}
+
+.cr-warn-card__what {
+  grid-area: what;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.cr-warn-card__who {
+  grid-area: who;
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-4);
+}
+
+.cr-warn-card__more {
+  font-family: var(--mono);
+  font-size: 9.5px;
+  letter-spacing: 0.06em;
+  color: var(--accent);
+  text-transform: uppercase;
+}
+
+/* Level legend — published on the tab and mirrored in the printed report. */
+.cr-warn-legend {
+  display: grid;
+  gap: 7px;
+  padding: 12px 14px;
+  margin-bottom: 14px;
+  border: 1px solid var(--rule);
+  background: var(--paper-2);
+  border-radius: 4px;
+}
+
+.cr-warn-legend__item {
+  display: grid;
+  grid-template-columns: 148px 1fr;
+  align-items: baseline;
+  gap: 10px;
+}
+.cr-warn-legend__item .cr-warn-badge { margin-left: 0; justify-self: start; }
+
+.cr-warn-legend__text {
+  font-size: 12px;
   line-height: 1.45;
   color: var(--ink-2);
 }
 
-.cr-warn-row__when {
-  font-family: var(--mono);
-  font-size: 11px;
-  color: var(--ink-4);
-  white-space: nowrap;
+/* Drawer response editor */
+.cr-warn-drawer__toggle {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font-size: 13px;
+  color: var(--ink);
+  cursor: pointer;
+  margin-bottom: 10px;
+}
+.cr-warn-drawer__toggle input {
+  width: 20px;
+  height: 20px;
+  cursor: pointer;
+  accent-color: var(--ink);
+}
+
+.cr-warn-drawer__note {
+  width: 100%;
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.45;
+  padding: 9px 11px;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  background: var(--paper);
+  color: var(--ink);
+  resize: vertical;
+}
+.cr-warn-drawer__note:focus {
+  outline: none;
+  border-color: var(--ink-3);
+}
+
+.cr-warn-drawer__note-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin: 8px 0 6px;
 }
 
 /* Drawer body */
@@ -2754,6 +2889,43 @@ details[open] > .analytics-filters__summary::before { content: "▾ "; }
   color: var(--ink-4);
 }
 
+.wr-legend {
+  margin-top: 26px;
+  padding: 14px 16px;
+  border: 1px solid var(--rule);
+  background: var(--paper-2);
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+
+.wr-legend__title {
+  font-family: var(--mono);
+  font-size: 9.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-4);
+  margin-bottom: 8px;
+}
+
+.wr-legend__list {
+  display: grid;
+  grid-template-columns: 150px 1fr;
+  gap: 4px 12px;
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.wr-legend__list dt {
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.wr-legend__list dd {
+  margin: 0;
+  color: var(--ink-2);
+}
+
 @media print {
   .no-print { display: none !important; }
 
@@ -2784,5 +2956,9 @@ details[open] > .analytics-filters__summary::before { content: "▾ "; }
 @media (max-width: 640px) {
   .cr-warn-weeknav__label { min-width: 0; font-size: 13.5px; }
   .cr-warn-bar { flex-direction: column; align-items: stretch; }
-  .cr-warn-row__line { grid-template-columns: 1fr; gap: 0; }
+  .cr-warn-card__line {
+    grid-template-columns: 1fr;
+    grid-template-areas: "when" "what" "who";
+  }
+  .cr-warn-legend__item { grid-template-columns: 1fr; gap: 3px; }
 }
