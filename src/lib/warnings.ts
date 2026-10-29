@@ -59,7 +59,9 @@ export function termStart(now: Date = new Date()): Date {
   }
   const days = Number(process.env.WARNINGS_LOOKBACK_DAYS);
   const lookback =
-    Number.isFinite(days) && days >= 1 ? Math.floor(days) : DEFAULT_LOOKBACK_DAYS;
+    Number.isFinite(days) && days >= 1
+      ? Math.floor(days)
+      : DEFAULT_LOOKBACK_DAYS;
   return new Date(now.getTime() - lookback * 24 * 60 * 60 * 1000);
 }
 
@@ -124,6 +126,11 @@ export interface WarningsQuery {
   // needing the Zurich week maths in the browser bundle.
   offset?: number | null;
   dorm?: string | null;
+  // Scheduled reports fail closed on missing conversation data and freeze
+  // escalation at the selected week's cutoff. Dashboard defaults stay live.
+  strictConversations?: boolean;
+  asOfWeekEnd?: boolean;
+  includeOutstanding?: boolean;
 }
 
 export async function getWarningsForWeek(
@@ -152,21 +159,28 @@ export async function getWarningsForWeek(
 
   // Fetch the whole term once — it's a superset of the requested week, and we
   // need the history anyway to work out levels.
-  const start = termStart(now);
+  const asOf = q.asOfWeekEnd && week.end < now ? week.end : now;
+  const start = termStart(asOf);
   const windowStart =
     week.start.getTime() < start.getTime() ? week.start : start;
   // A future week request shouldn't truncate the fetch.
-  const windowEnd = week.end.getTime() > now.getTime() ? week.end : now;
+  const windowEnd = q.asOfWeekEnd
+    ? asOf
+    : week.end.getTime() > now.getTime()
+      ? week.end
+      : now;
 
   const [records, students, houses, conversations] = await Promise.all([
     listPastoralTimeline(windowStart.toISOString(), windowEnd.toISOString(), {
       revalidate: 60,
       pageSize: 200,
       maxPages: 80,
+      requireComplete: q.strictConversations,
     }),
     listStudents(),
     listHouses(),
-    readConversations().catch((err) => {
+    readConversations(q.strictConversations).catch((err) => {
+      if (q.strictConversations) throw err;
       // The sheet is the source of truth for conversations, but an outage
       // there must not take down the warnings list itself.
       console.error("[warnings] conversation read failed", err);
@@ -174,6 +188,11 @@ export async function getWarningsForWeek(
     }),
   ]);
 
+  if (q.strictConversations && students.length === 0)
+    throw new OrahError(
+      502,
+      "Orah student roster is empty; report was not generated.",
+    );
   const studentMap = buildStudentMap(students);
   const houseMap = buildHouseMap(houses);
 
@@ -209,10 +228,12 @@ export async function getWarningsForWeek(
     // written up) — staff routinely log the morning after.
     const whenMs = Date.parse(r.date);
     if (!Number.isFinite(whenMs)) continue;
+    if (q.asOfWeekEnd && (whenMs < start.getTime() || whenMs > asOf.getTime()))
+      continue;
 
     const orahStudent = studentMap.get(r.student.id);
     const dorm = orahStudent?.house?.id
-      ? houseMap.get(orahStudent.house.id) ?? "—"
+      ? (houseMap.get(orahStudent.house.id) ?? "—")
       : "—";
     if (dorm && dorm !== "—") dorms.add(dorm);
     if (dormFilter && dorm.toLowerCase() !== dormFilter) continue;
@@ -253,6 +274,11 @@ export async function getWarningsForWeek(
 
   const byStudent = new Map<number, ConversationEntry[]>();
   for (const c of conversations) {
+    if (
+      q.asOfWeekEnd &&
+      Date.parse(c.conversationDate ?? c.updatedAt) > asOf.getTime()
+    )
+      continue;
     const list = byStudent.get(c.studentId);
     if (list) list.push(c);
     else byStudent.set(c.studentId, [c]);
@@ -264,14 +290,16 @@ export async function getWarningsForWeek(
   const out: WarningStudent[] = [];
   for (const { student, term } of buckets.values()) {
     // Only students with a warning in the requested week belong on the board.
-    if (student.warningsThisWeek.length === 0) continue;
+    if (!q.includeOutstanding && student.warningsThisWeek.length === 0)
+      continue;
 
     const all = byStudent.get(student.studentId) ?? [];
     const inTerm = all.filter(
       (c) => !c.conversationDate || c.conversationDate >= termStartISO,
     );
     const thisWeek =
-      all.find((c) => c.key === conversationKey(student.studentId, key)) ?? null;
+      all.find((c) => c.key === conversationKey(student.studentId, key)) ??
+      null;
 
     const levels = computeLevels(
       term,
@@ -298,7 +326,11 @@ export async function getWarningsForWeek(
       levels.warningsSinceLastConversation;
     student.conversation = thisWeek;
 
-    out.push(student);
+    if (
+      student.warningsThisWeek.length > 0 ||
+      (q.includeOutstanding && student.dueNow)
+    )
+      out.push(student);
   }
 
   // Most urgent first: highest level, then most warnings, then name.
@@ -350,7 +382,9 @@ export function reportRows(data: WarningsResponse, dorm?: string): string[][] {
   ];
 
   const rows: string[][] = [
-    [`Warnings review — week of ${data.week.key}${dorm && dorm !== "all" ? ` · ${dorm}` : ""}`],
+    [
+      `Warnings review — week of ${data.week.key}${dorm && dorm !== "all" ? ` · ${dorm}` : ""}`,
+    ],
     [`Generated ${new Date().toISOString()}`],
     [],
     header,
@@ -369,7 +403,10 @@ export function reportRows(data: WarningsResponse, dorm?: string): string[][] {
       s.conversation?.loggedBy ?? "",
       s.conversation?.response ?? "",
       s.warningsThisWeek
-        .map((w) => `${w.date} — ${w.description || "(no description)"} (${w.createdBy})`)
+        .map(
+          (w) =>
+            `${w.date} — ${w.description || "(no description)"} (${w.createdBy})`,
+        )
         .join(" | "),
     ]);
   }

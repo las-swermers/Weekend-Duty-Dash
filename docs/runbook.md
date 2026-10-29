@@ -398,3 +398,8 @@ rewrites** that tab rather than duplicating it.
 | "Read-only: no warnings sheet configured" | `WARNINGS_SHEET_ID` or the service-account vars are unset. |
 | Tick-off returns 403 | The sheet is shared with the service account as Viewer, not Editor. |
 | A student is missing | They had no warning *in that week*; the board only lists the week's warnings. Their history still counts toward the level. |
+
+## Admin-managed weekly emails
+
+See [weekly-reports.md](weekly-reports.md) for report administrator access,
+recipient settings, scheduling, analytics definitions, previews and send recovery.

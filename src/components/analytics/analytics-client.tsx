@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { ReportsAdminLink } from "@/components/reports/admin-link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { PastoralCharts } from "@/components/analytics/charts";
@@ -189,6 +190,7 @@ export function AnalyticsClient({ defaultStart, viewerEmail }: Props) {
           </div>
         </div>
         <div className="masthead__actions">
+          <ReportsAdminLink />
           <Link href="/weekend" className="btn btn--ghost btn--sm">
             ← Dashboard
           </Link>

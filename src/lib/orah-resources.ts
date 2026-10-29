@@ -165,11 +165,17 @@ export async function getZoneAndChildren(
 export async function listLocationRecordTimeline(
   startISO: string,
   endISO?: string,
-  opts: { pageSize?: number; maxPages?: number; revalidate?: number } = {},
+  opts: {
+    pageSize?: number;
+    maxPages?: number;
+    revalidate?: number;
+    requireComplete?: boolean;
+  } = {},
 ): Promise<OrahLocationRecord[]> {
   const pageSize = opts.pageSize ?? 50;
   const maxPages = opts.maxPages ?? 40;
   const out: OrahLocationRecord[] = [];
+  const seen = new Set<number>();
   for (let page = 0; page < maxPages; page += 1) {
     const res = await orahCall<OrahEnvelope<OrahLocationRecord[]>>(
       "/open-api/location-record/timeline",
@@ -178,15 +184,36 @@ export async function listLocationRecordTimeline(
           date_range: endISO
             ? { start_date: startISO, end_date: endISO }
             : { start_date: startISO },
-          page_size: pageSize,
-          page_index: page,
         },
+        page_size: pageSize,
+        page_index: page,
       },
       { revalidate: opts.revalidate },
     );
+    if (opts.requireComplete && !Array.isArray(res.data)) {
+      throw new OrahError(
+        502,
+        "Orah returned an invalid timeline; report was not generated.",
+      );
+    }
     const records = res.data ?? [];
+    if (opts.requireComplete)
+      for (const record of records) {
+        if (seen.has(record.id))
+          throw new OrahError(
+            502,
+            "Orah returned overlapping pages; report was not generated.",
+          );
+        seen.add(record.id);
+      }
     out.push(...records);
     if (records.length < pageSize) break;
+    if (opts.requireComplete && page === maxPages - 1) {
+      throw new OrahError(
+        502,
+        "Orah timeline limit reached; report was not generated.",
+      );
+    }
   }
   return out;
 }
@@ -197,11 +224,17 @@ export async function listLocationRecordTimeline(
 export async function listPastoralTimeline(
   startISO: string,
   endISO?: string,
-  opts: { pageSize?: number; maxPages?: number; revalidate?: number } = {},
+  opts: {
+    pageSize?: number;
+    maxPages?: number;
+    revalidate?: number;
+    requireComplete?: boolean;
+  } = {},
 ): Promise<OrahPastoralRecord[]> {
   const pageSize = opts.pageSize ?? 50;
   const maxPages = opts.maxPages ?? 20;
   const out: OrahPastoralRecord[] = [];
+  const seen = new Set<number>();
   for (let page = 0; page < maxPages; page += 1) {
     const res = await orahCall<OrahEnvelope<OrahPastoralRecord[]>>(
       "/open-api/pastoral/timeline",
@@ -210,15 +243,36 @@ export async function listPastoralTimeline(
           date_range: endISO
             ? { start_date: startISO, end_date: endISO }
             : { start_date: startISO },
-          page_size: pageSize,
-          page_index: page,
         },
+        page_size: pageSize,
+        page_index: page,
       },
       { revalidate: opts.revalidate },
     );
+    if (opts.requireComplete && !Array.isArray(res.data)) {
+      throw new OrahError(
+        502,
+        "Orah returned an invalid timeline; report was not generated.",
+      );
+    }
     const records = res.data ?? [];
+    if (opts.requireComplete)
+      for (const record of records) {
+        if (seen.has(record.id))
+          throw new OrahError(
+            502,
+            "Orah returned overlapping pages; report was not generated.",
+          );
+        seen.add(record.id);
+      }
     out.push(...records);
     if (records.length < pageSize) break;
+    if (opts.requireComplete && page === maxPages - 1) {
+      throw new OrahError(
+        502,
+        "Orah timeline limit reached; report was not generated.",
+      );
+    }
   }
   return out;
 }
@@ -231,7 +285,6 @@ export function studentDisplayName(s: OrahStudent | undefined): {
   const first = (s.alt_name?.trim() || s.first_name?.trim()) ?? "";
   const last = s.last_name?.trim() ?? "";
   const full = `${first} ${last}`.trim() || `Student #${s.id}`;
-  const initials =
-    `${first.charAt(0)}${last.charAt(0)}`.toUpperCase() || "??";
+  const initials = `${first.charAt(0)}${last.charAt(0)}`.toUpperCase() || "??";
   return { full, initials };
 }
