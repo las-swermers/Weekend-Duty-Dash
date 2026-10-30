@@ -1,6 +1,8 @@
 "use client";
 
 import Link from "next/link";
+import { resolveDormSelection } from "@/lib/dorm-selection";
+import { ReportsAdminLink } from "@/components/reports/admin-link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import useSWR from "swr";
@@ -167,6 +169,7 @@ function TopBar({
         )}
       </div>
       <div className="cr-bar__actions">
+        <ReportsAdminLink />
         <Link href="/weekend" className="btn btn--ghost btn--sm">
           <Icon name="folder" size={13} /> Weekend
         </Link>
@@ -1068,18 +1071,17 @@ export function LiveClient(props: Props) {
   }, [allStudents, todayRecords, weekendRecords]);
 
   const effectiveByDormSet = useMemo<ReadonlySet<string>>(() => {
-    if (byDormSet.size > 0) return byDormSet;
-    const fallback = allDorms[0];
-    return fallback ? new Set([fallback]) : new Set();
+    return resolveDormSelection(byDormSet, allDorms);
   }, [byDormSet, allDorms]);
 
   const effectiveByDormLabel = useMemo(() => {
+    if (byDormSet.size === 0) return "All dorms";
     const arr = Array.from(effectiveByDormSet);
     if (arr.length === 0) return "";
     if (arr.length === 1) return arr[0]!;
     if (arr.length === 2) return arr.join(" + ");
     return `${arr.length} dorms`;
-  }, [effectiveByDormSet]);
+  }, [effectiveByDormSet, byDormSet]);
 
   const byDormStudents = useMemo(() => {
     if (effectiveByDormSet.size === 0) return [];

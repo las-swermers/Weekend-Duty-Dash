@@ -1,10 +1,16 @@
+import { safeReportCallback } from "@/lib/reports/config";
 import { signIn } from "@/lib/auth";
 
 export const metadata = {
   title: "Sign in · LAS Duty Dashboard",
 };
 
-export default function SignInPage() {
+export default function SignInPage({
+  searchParams,
+}: {
+  searchParams: { callbackUrl?: string };
+}) {
+  const redirectTo = safeReportCallback(searchParams.callbackUrl);
   return (
     <main className="signin">
       <div className="signin__card">
@@ -19,7 +25,7 @@ export default function SignInPage() {
         <form
           action={async () => {
             "use server";
-            await signIn("google", { redirectTo: "/" });
+            await signIn("google", { redirectTo });
           }}
         >
           <button type="submit" className="btn btn--primary">

@@ -56,7 +56,7 @@ export interface OrahLocation {
 export interface OrahLocationRecord {
   model: "location_record";
   id: number;
-  type: "in" | "out";
+  type: "in" | "out" | "transit";
   record_time: string;
   location: OrahLocationRef;
   student: { id: number; sis_id?: string | null };

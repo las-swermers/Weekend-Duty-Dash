@@ -1,6 +1,8 @@
 "use client";
 
 import Link from "next/link";
+import { resolveDormSelection } from "@/lib/dorm-selection";
+import { ReportsAdminLink } from "@/components/reports/admin-link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import useSWR from "swr";
@@ -200,6 +202,7 @@ function TopBar({
         {userName && <span>{userName}</span>}
       </div>
       <div className="cr-bar__actions">
+        <ReportsAdminLink />
         <Link href="/live" className="btn btn--ghost btn--sm">
           <Icon name="folder" size={13} /> Live
         </Link>
@@ -1441,21 +1444,19 @@ export function DashboardClient({
     return Array.from(set).sort((a, b) => a.localeCompare(b));
   }, [allStudents, noPaStudents, weekendRecords, studyHallRecords]);
 
-  // Effective selection: explicit picks if any, otherwise first dorm (so the
-  // tab shows something useful on first load).
+  // Empty selection means all dorms, including dorms arriving after refresh.
   const effectiveByDormSet = useMemo<ReadonlySet<string>>(() => {
-    if (byDormSet.size > 0) return byDormSet;
-    const fallback = allDorms[0];
-    return fallback ? new Set([fallback]) : new Set();
+    return resolveDormSelection(byDormSet, allDorms);
   }, [byDormSet, allDorms]);
 
   const effectiveByDormLabel = useMemo(() => {
+    if (byDormSet.size === 0) return "All dorms";
     const arr = Array.from(effectiveByDormSet);
     if (arr.length === 0) return "";
     if (arr.length === 1) return arr[0]!;
     if (arr.length === 2) return arr.join(" + ");
     return `${arr.length} dorms`;
-  }, [effectiveByDormSet]);
+  }, [effectiveByDormSet, byDormSet]);
 
   const byDormHc = useMemo(() => {
     if (effectiveByDormSet.size === 0) return [];

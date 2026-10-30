@@ -1,8 +1,20 @@
+import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 
 export default auth((req) => {
+  // This exact endpoint authenticates CRON_SECRET in its own handler.
+  if (
+    ["/api/cron/weekly-reports", "/api/cron/watchlist-sync"].includes(
+      req.nextUrl.pathname,
+    )
+  )
+    return NextResponse.next();
   if (!req.auth && !req.nextUrl.pathname.startsWith("/signin")) {
     const signInUrl = new URL("/signin", req.url);
+    signInUrl.searchParams.set(
+      "callbackUrl",
+      req.nextUrl.pathname + req.nextUrl.search,
+    );
     return Response.redirect(signInUrl);
   }
 });

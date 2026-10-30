@@ -176,7 +176,10 @@ function parseRow(row: string[]): ConversationEntry | null {
 // Read every conversation row. De-duplicates by key, keeping the most
 // recently updated — two staff appending for the same student in the same
 // tick would otherwise both land.
-export async function readConversations(): Promise<ConversationEntry[]> {
+export async function readConversations(
+  strict = false,
+): Promise<ConversationEntry[]> {
+  if (strict) requireConfigured();
   if (!isWarningsSheetConfigured()) return [];
   const id = sheetId()!;
 
@@ -184,16 +187,20 @@ export async function readConversations(): Promise<ConversationEntry[]> {
   try {
     accessToken = await token();
   } catch (err) {
+    if (strict) throw err;
     console.error("[warnings-sheet] auth failed", err);
     return [];
   }
 
-  const res = await fetch(api(id, `/values/${range(logTab(), `A:${LAST_COL}`)}`), {
-    headers: { Authorization: `Bearer ${accessToken}` },
-    next: { revalidate: READ_TTL, tags: [WARNINGS_TAG] },
-  });
+  const res = await fetch(
+    api(id, `/values/${range(logTab(), `A:${LAST_COL}`)}`),
+    {
+      headers: { Authorization: `Bearer ${accessToken}` },
+      next: { revalidate: READ_TTL, tags: [WARNINGS_TAG] },
+    },
+  );
 
-  if (res.status === 400 || res.status === 404) {
+  if (!strict && (res.status === 400 || res.status === 404)) {
     // Tab doesn't exist yet — nobody has logged a conversation. Not an error.
     return [];
   }
