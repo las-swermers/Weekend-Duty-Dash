@@ -17,7 +17,7 @@ for (const [name, load] of [
   ["pastoral", listPastoralTimeline],
   ["location", listLocationRecordTimeline],
 ] as const) {
-  it(`${name} paginates using top-level page fields and stops on a partial page`, async () => {
+  it(`${name} paginates using documented query page fields and stops on a partial page`, async () => {
     vi.mocked(orahCall)
       .mockResolvedValueOnce({ data: [{ id: 1 }, { id: 2 }] })
       .mockResolvedValueOnce({ data: [{ id: 3 }] });
@@ -27,8 +27,7 @@ for (const [name, load] of [
     });
     expect(result).toHaveLength(3);
     expect(vi.mocked(orahCall).mock.calls[1][1]).toMatchObject({
-      page_index: 1,
-      page_size: 2,
+      query: { page_index: 1, page_size: 2 },
     });
   });
   it(`${name} rejects missing data, repeated pages and capped results`, async () => {

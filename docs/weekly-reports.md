@@ -131,3 +131,10 @@ and TypeScript. Browser checks use fictional data and test sessions locally.
 The accompanying **All dorms** fix removes the first-dorm fallback from Live
 and Weekend: an empty multi-selection now resolves to every available dorm,
 including new dorms after a data refresh. Individual selections stay filtered.
+
+## Dorm insights extension
+
+See [Dorm insights](dorm-analytics.md) for watchlist collection and consequence KPIs.
+Analytics reports now add bounded time-to-serve metrics when tracking is available,
+and paired rest interval totals. These use the same calculations as `/analytics`.
+Pastoral and location timeline pagination uses the documented fields inside `query`.

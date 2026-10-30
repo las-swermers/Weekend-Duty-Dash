@@ -130,6 +130,7 @@ export interface WarningsQuery {
   // escalation at the selected week's cutoff. Dashboard defaults stay live.
   strictConversations?: boolean;
   asOfWeekEnd?: boolean;
+  cutoffISO?: string;
   includeOutstanding?: boolean;
 }
 
@@ -159,12 +160,20 @@ export async function getWarningsForWeek(
 
   // Fetch the whole term once — it's a superset of the requested week, and we
   // need the history anyway to work out levels.
-  const asOf = q.asOfWeekEnd && week.end < now ? week.end : now;
+  const requestedCutoff = q.cutoffISO ? new Date(q.cutoffISO) : null;
+  if (requestedCutoff && !Number.isFinite(+requestedCutoff))
+    throw new OrahError(400, "Invalid cutoff");
+  const historical = q.asOfWeekEnd || Boolean(requestedCutoff);
+  const asOf = requestedCutoff
+    ? new Date(Math.min(+requestedCutoff, +now))
+    : q.asOfWeekEnd && week.end < now
+      ? week.end
+      : now;
   const start = termStart(asOf);
   const windowStart =
     week.start.getTime() < start.getTime() ? week.start : start;
   // A future week request shouldn't truncate the fetch.
-  const windowEnd = q.asOfWeekEnd
+  const windowEnd = historical
     ? asOf
     : week.end.getTime() > now.getTime()
       ? week.end
@@ -228,7 +237,7 @@ export async function getWarningsForWeek(
     // written up) — staff routinely log the morning after.
     const whenMs = Date.parse(r.date);
     if (!Number.isFinite(whenMs)) continue;
-    if (q.asOfWeekEnd && (whenMs < start.getTime() || whenMs > asOf.getTime()))
+    if (historical && (whenMs < start.getTime() || whenMs > asOf.getTime()))
       continue;
 
     const orahStudent = studentMap.get(r.student.id);
@@ -275,7 +284,7 @@ export async function getWarningsForWeek(
   const byStudent = new Map<number, ConversationEntry[]>();
   for (const c of conversations) {
     if (
-      q.asOfWeekEnd &&
+      historical &&
       Date.parse(c.conversationDate ?? c.updatedAt) > asOf.getTime()
     )
       continue;

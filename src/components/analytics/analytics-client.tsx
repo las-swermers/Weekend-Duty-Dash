@@ -1,493 +1,1171 @@
 "use client";
-
 import Link from "next/link";
+import { useEffect, useMemo, useState } from "react";
 import { ReportsAdminLink } from "@/components/reports/admin-link";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import type { AnalyticsData } from "@/lib/analytics/types";
+import {
+  durationBounds,
+  waitingHours,
+  watchMetrics,
+} from "@/lib/analytics/watchlist";
+import { localDay } from "@/lib/analytics/range";
+import { weekKey, weekRange } from "@/lib/dates";
+import "./analytics.css";
 
-import { PastoralCharts } from "@/components/analytics/charts";
-import { ResolutionPanel } from "@/components/analytics/resolution-panel";
-import type {
-  PastoralFilters,
-  PastoralMeta,
-  PastoralResponse,
-} from "@/types/analytics";
+type View = "overview" | "consequences" | "warnings" | "rest" | "trends";
+const views: [View, string][] = [
+  ["overview", "Overview"],
+  ["consequences", "Consequences"],
+  ["warnings", "Warnings & follow-up"],
+  ["rest", "Health Center & rest"],
+  ["trends", "Trends & dorms"],
+];
+const stamp = (iso: string | null | undefined) =>
+  iso
+    ? new Intl.DateTimeFormat("en-GB", {
+        timeZone: "Europe/Zurich",
+        dateStyle: "medium",
+        timeStyle: "short",
+      }).format(new Date(iso))
+    : "Unknown";
+const hours = (n: number | null) =>
+  n === null ? "—" : n < 48 ? `${n.toFixed(1)}h` : `${(n / 24).toFixed(1)}d`;
+const bounds = (lo: number | null, hi: number | null) =>
+  lo === null || hi === null
+    ? "Not yet measured"
+    : hi < 96
+      ? `${lo.toFixed(1)}–${hi.toFixed(1)}h`
+      : `${(lo / 24).toFixed(1)}–${(hi / 24).toFixed(1)}d`;
+const initialRange = () => {
+  const r = weekRange(new Date(), -1);
+  return { start: localDay(r.start), end: localDay(r.end) };
+};
 
-interface Props {
+export function AnalyticsClient({
+  viewerEmail,
+}: {
   defaultStart: string;
   defaultEnd: string;
   viewerEmail: string;
-}
-
-type Preset = "today" | "week" | "month" | "semester" | "custom";
-
-function toDateInput(iso: string): string {
-  if (!iso) return "";
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return "";
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${y}-${m}-${day}`;
-}
-
-function fromDateInput(value: string, endOfDay = false): string {
-  if (!value) return "";
-  const d = new Date(value);
-  if (Number.isNaN(d.getTime())) return "";
-  if (endOfDay) d.setHours(23, 59, 59, 999);
-  else d.setHours(0, 0, 0, 0);
-  return d.toISOString();
-}
-
-function presetRange(preset: Preset): { start: string; end: string } {
-  const today = new Date();
-  const end = toDateInput(today.toISOString());
-  const start = new Date(today);
-  if (preset === "today") {
-    return { start: end, end };
-  }
-  if (preset === "week") {
-    start.setDate(today.getDate() - 6);
-  } else if (preset === "month") {
-    start.setDate(today.getDate() - 29);
-  } else if (preset === "semester") {
-    // NEXT_PUBLIC_* values are inlined into the client bundle, so this var
-    // must remain a non-secret integer. Never store API keys or PII in
-    // NEXT_PUBLIC_ vars.
-    const days = Number(process.env.NEXT_PUBLIC_SEMESTER_DAYS) || 120;
-    start.setDate(today.getDate() - (days - 1));
-  }
-  return { start: toDateInput(start.toISOString()), end };
-}
-
-export function AnalyticsClient({ defaultStart, viewerEmail }: Props) {
-  const today = new Date();
-  const initialEnd = toDateInput(today.toISOString());
-  const [preset, setPreset] = useState<Preset>("month");
-  const [startDate, setStartDate] = useState(toDateInput(defaultStart));
-  const [endDate, setEndDate] = useState(initialEnd);
-  const [categories, setCategories] = useState<string[]>([]);
-  const [houseIds, setHouseIds] = useState<number[]>([]);
-  const [yearLevels, setYearLevels] = useState<string[]>([]);
-
-  const [meta, setMeta] = useState<PastoralMeta | null>(null);
-  const [metaError, setMetaError] = useState<string | null>(null);
-  const [data, setData] = useState<PastoralResponse | null>(null);
+}) {
+  const [range, setRange] = useState(initialRange);
+  const [dorm, setDorm] = useState("");
+  const [view, setView] = useState<View>("overview");
+  const [ready, setReady] = useState(false);
+  const [data, setData] = useState<AnalyticsData | null>(null);
+  const [houses, setHouses] = useState<AnalyticsData["houses"]>([]);
+  const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
+  const [revision, setRevision] = useState(0);
+  const [search, setSearch] = useState("");
+  const [student, setStudent] = useState<number | null>(null);
+  const [drill, setDrill] = useState<{ title: string; ids: number[] } | null>(
+    null,
+  );
+  const [status, setStatus] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [adminOpen, setAdminOpen] = useState(false);
+  const [targetRows, setTargetRows] = useState<
+    { category: string; hours: string }[]
+  >([]);
   useEffect(() => {
-    const ac = new AbortController();
-    fetch(
-      `/api/orah/pastoral/meta?start=${encodeURIComponent(
-        fromDateInput(toDateInput(defaultStart)),
-      )}&end=${encodeURIComponent(fromDateInput(initialEnd, true))}`,
-      { signal: ac.signal },
-    )
-      .then(async (res) => {
-        if (!res.ok) {
-          const j = await res.json().catch(() => ({}));
-          throw new Error(j.error ?? `HTTP ${res.status}`);
-        }
-        return res.json() as Promise<PastoralMeta>;
-      })
-      .then(setMeta)
-      .catch((err) => {
-        if (err.name !== "AbortError") setMetaError(err.message);
-      });
-    return () => ac.abort();
-  }, [defaultStart, initialEnd]);
-
-  const runQuery = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    const filters: PastoralFilters = {
-      startDate: fromDateInput(startDate),
-      endDate: fromDateInput(endDate, true),
-      categories: categories.length ? categories : undefined,
-      houseIds: houseIds.length ? houseIds : undefined,
-      yearLevels: yearLevels.length ? yearLevels : undefined,
-    };
+    const params = new URLSearchParams(window.location.search);
     try {
-      const res = await fetch("/api/orah/pastoral", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(filters),
-      });
-      if (!res.ok) {
-        const j = await res.json().catch(() => ({}));
-        throw new Error(j.error ?? `HTTP ${res.status}`);
-      }
-      const json = (await res.json()) as PastoralResponse;
-      setData(json);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Query failed");
-    } finally {
-      setLoading(false);
+      setDorm(
+        params.get("dorm") ?? localStorage.getItem("analytics.dorm") ?? "374",
+      );
+    } catch {
+      setDorm(params.get("dorm") ?? "374");
     }
-  }, [startDate, endDate, categories, houseIds, yearLevels]);
-
-  // Re-run when the date window or filters change.
+    if (params.has("start") && params.has("end"))
+      setRange({ start: params.get("start")!, end: params.get("end")! });
+    const selected = params.get("view");
+    if (views.some(([v]) => v === selected)) setView(selected as View);
+    setReady(true);
+  }, []);
   useEffect(() => {
-    if (!meta) return;
-    void runQuery();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [meta, startDate, endDate, categories, houseIds, yearLevels]);
-
-  const agg = data?.aggregations;
-
-  const applyPreset = (p: Preset) => {
-    setPreset(p);
-    if (p === "custom") return;
-    const { start, end } = presetRange(p);
-    setStartDate(start);
-    setEndDate(end);
-  };
-
-  const onCustomDate =
-    (which: "start" | "end") =>
-    (e: React.ChangeEvent<HTMLInputElement>) => {
-      setPreset("custom");
-      if (which === "start") setStartDate(e.target.value);
-      else setEndDate(e.target.value);
-    };
-
-  const toggleArrayValue = <T,>(
-    list: T[],
-    setter: (v: T[]) => void,
-    value: T,
-  ) => {
-    setter(
-      list.includes(value) ? list.filter((v) => v !== value) : [...list, value],
+    if (!ready) return;
+    const abort = new AbortController();
+    setLoading(true);
+    setData(null);
+    setError("");
+    setStudent(null);
+    setDrill(null);
+    const params = new URLSearchParams({ ...range, dorm });
+    try {
+      localStorage.setItem("analytics.dorm", dorm);
+    } catch {}
+    fetch(`/api/analytics/overview?${params}`, { signal: abort.signal })
+      .then(async (r) => {
+        const j = await r.json();
+        if (!r.ok) throw new Error(j.error ?? "Could not load analytics.");
+        return j as AnalyticsData;
+      })
+      .then((j) => {
+        setData(j);
+        setHouses(j.houses);
+        setTargetRows(
+          Object.entries(j.watch?.targets ?? {}).map(([category, hours]) => ({
+            category,
+            hours: String(hours),
+          })),
+        );
+      })
+      .catch((e) => {
+        if (e.name !== "AbortError") setError(e.message);
+      })
+      .finally(() => {
+        if (!abort.signal.aborted) setLoading(false);
+      });
+    return () => abort.abort();
+  }, [ready, range, dorm, revision]);
+  useEffect(() => {
+    if (!ready) return;
+    window.history.replaceState(
+      null,
+      "",
+      `/analytics?${new URLSearchParams({ ...range, dorm, view })}`,
     );
+  }, [ready, range, dorm, view]);
+  useEffect(() => {
+    if (student !== null || drill)
+      document
+        .getElementById("an-details")
+        ?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, [student, drill]);
+
+  const m = data?.watch?.observedAt ? data.watch.metrics : undefined;
+  const episodes = data?.watch?.episodes ?? [];
+  const labelFor = (id: string) => episodes.find((e) => e.id === id);
+  const matches = (s: { name: string; dorm: string }) =>
+    `${s.name} ${s.dorm}`.toLowerCase().includes(search.toLowerCase());
+  const studentName =
+    data?.pastoral?.records.find((r) => r.studentId === student)?.name ??
+    episodes.find((e) => e.studentId === student)?.name ??
+    data?.rest?.visits.find((r) => r.studentId === student)?.name ??
+    data?.rest?.now?.students.find((r) => r.studentId === student)?.name ??
+    data?.warnings?.students.find((s) => s.studentId === student)?.name;
+  const records = useMemo(
+    () =>
+      data?.pastoral?.records.filter(
+        (r) =>
+          (student === null || r.studentId === student) &&
+          (!drill || drill.ids.includes(r.id)),
+      ) ?? [],
+    [data, student, drill],
+  );
+  const showStudent = (id: number) => {
+    setStudent(id);
+    setDrill(null);
   };
-
-  const topCategory = useMemo(() => {
-    if (!agg?.byCategory.length) return null;
-    return agg.byCategory[0];
-  }, [agg]);
-
+  const showRecords = (
+    title: string,
+    predicate: (
+      r: NonNullable<AnalyticsData["pastoral"]>["records"][number],
+    ) => boolean,
+  ) => {
+    setStudent(null);
+    setDrill({
+      title,
+      ids: data?.pastoral?.records.filter(predicate).map((r) => r.id) ?? [],
+    });
+  };
+  const nameButton = (id: number, name: string) => (
+    <button className="an-link" onClick={() => showStudent(id)}>
+      {name}
+    </button>
+  );
+  const preset = (kind: "this" | "last" | "four" | "eight") => {
+    const last = weekRange(new Date(), kind === "this" ? 0 : -1);
+    const first = weekRange(
+      last.start,
+      kind === "four" ? -3 : kind === "eight" ? -7 : 0,
+    );
+    setRange({
+      start: localDay(first.start),
+      end: localDay(kind === "this" ? new Date() : last.end),
+    });
+  };
+  async function mutate(method: "POST" | "PUT") {
+    setBusy(true);
+    setStatus("");
+    try {
+      if (
+        method === "PUT" &&
+        new Set(targetRows.map((r) => r.category.trim().toLowerCase())).size !==
+          targetRows.length
+      )
+        throw new Error("Each category needs a unique target.");
+      const res = await fetch("/api/analytics/tracking", {
+        method,
+        headers: { "Content-Type": "application/json" },
+        body:
+          method === "PUT"
+            ? JSON.stringify({
+                targets: Object.fromEntries(
+                  targetRows.map((r) => [r.category, Number(r.hours)]),
+                ),
+              })
+            : undefined,
+      });
+      const result = await res.json();
+      if (!res.ok) throw new Error(result.error);
+      setStatus(
+        method === "PUT"
+          ? "Targets saved. Metrics use these current targets."
+          : "Watchlist observation saved.",
+      );
+      setRevision((r) => r + 1);
+    } catch (e) {
+      setStatus(e instanceof Error ? e.message : "Operation failed.");
+    } finally {
+      setBusy(false);
+    }
+  }
   return (
-    <div className="app" data-density="balanced">
+    <div className="app an-app" data-density="balanced">
       <header className="masthead">
         <div>
           <div className="masthead__crest">
-            Leysin American School · Pastoral Analytics
+            Leysin American School · Student life
           </div>
           <h1 className="masthead__title">
-            Pastoral <em>Analytics</em>
+            Dorm <em>insights</em>
           </h1>
-          <div className="masthead__sub">
-            <span>Viewer · {viewerEmail || "—"}</span>
-            <span className="dot" />
-            <span>{startDate || "—"} → {endDate || "—"}</span>
-            {loading && (
-              <>
-                <span className="dot" />
-                <span>loading…</span>
-              </>
-            )}
-          </div>
+          <p className="an-muted">
+            See what needs attention, how quickly consequences are served, and
+            what is changing.
+          </p>
         </div>
-        <div className="masthead__actions">
+        <div className="masthead__actions an-no-print">
           <ReportsAdminLink />
-          <Link href="/weekend" className="btn btn--ghost btn--sm">
-            ← Dashboard
+          <Link className="btn btn--ghost btn--sm" href="/live">
+            Live dashboard
           </Link>
-          <Link href="/live" className="btn btn--ghost btn--sm">
-            Live
+          <Link className="btn btn--ghost btn--sm" href="/weekend">
+            Weekend
           </Link>
+          <button
+            className="btn btn--ghost btn--sm"
+            onClick={() => window.print()}
+          >
+            Print this view
+          </button>
         </div>
       </header>
-
-      <section className="section" id="range">
-        <div className="section__head">
-          <div className="section__num">№ 01</div>
-          <h2 className="section__title">
-            Time <em>window</em>
-          </h2>
-          <div className="section__sub">
-            Pick a preset or use custom dates. All metrics below recompute
-            automatically.
-          </div>
+      <section className="an-toolbar" aria-label="Analytics filters">
+        <label>
+          Dorm
+          <select
+            aria-label="Dorm"
+            value={dorm}
+            onChange={(e) => setDorm(e.target.value)}
+          >
+            <option value="">All dorms</option>
+            {!houses.length && dorm && <option value={dorm}>Savoy</option>}
+            {houses.map((h) => (
+              <option key={h.id} value={h.id}>
+                {h.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          From
+          <input
+            type="date"
+            value={range.start}
+            onChange={(e) => setRange({ ...range, start: e.target.value })}
+          />
+        </label>
+        <label>
+          Through
+          <input
+            type="date"
+            max={localDay(new Date())}
+            value={range.end}
+            onChange={(e) => setRange({ ...range, end: e.target.value })}
+          />
+        </label>
+        <div className="an-presets">
+          <button onClick={() => preset("this")}>This week</button>
+          <button onClick={() => preset("last")}>Last week</button>
+          <button onClick={() => preset("four")}>4 complete weeks</button>
+          <button onClick={() => preset("eight")}>8 complete weeks</button>
         </div>
-
-        <div
-          style={{
-            display: "flex",
-            flexWrap: "wrap",
-            gap: 8,
-            marginBottom: 16,
-          }}
+        <button
+          className="btn btn--ghost btn--sm"
+          disabled={loading}
+          onClick={() => setRevision((r) => r + 1)}
         >
-          {(
-            [
-              ["today", "Today"],
-              ["week", "Week"],
-              ["month", "Month"],
-              ["semester", "Semester"],
-              ["custom", "Custom"],
-            ] as Array<[Preset, string]>
-          ).map(([key, label]) => {
-            const on = preset === key;
-            return (
-              <button
-                key={key}
-                type="button"
-                onClick={() => applyPreset(key)}
-                className={on ? "btn btn--primary btn--sm" : "btn btn--ghost btn--sm"}
-              >
-                {label}
-              </button>
-            );
-          })}
-        </div>
-
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
-            gap: 14,
-            marginBottom: 16,
-          }}
-        >
-          <div className="field">
-            <label htmlFor="start">Start</label>
-            <input
-              id="start"
-              type="date"
-              value={startDate}
-              onChange={onCustomDate("start")}
-            />
-          </div>
-          <div className="field">
-            <label htmlFor="end">End</label>
-            <input
-              id="end"
-              type="date"
-              value={endDate}
-              onChange={onCustomDate("end")}
-            />
-          </div>
-        </div>
-
-        {metaError && (
-          <div className="section__empty">Meta load failed: {metaError}</div>
-        )}
-
-        <details className="analytics-filters">
-          <summary className="analytics-filters__summary">
-            Filters
-            {(categories.length || houseIds.length || yearLevels.length) > 0 ? (
-              <span className="analytics-filters__count">
-                · {categories.length + houseIds.length + yearLevels.length} active
-              </span>
-            ) : null}
-          </summary>
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
-              gap: 16,
-              marginTop: 14,
-              marginBottom: 4,
+          Refresh view
+        </button>
+      </section>
+      <nav className="an-tabs an-no-print" aria-label="Analytics views">
+        {views.map(([key, title]) => (
+          <button
+            key={key}
+            aria-current={view === key ? "page" : undefined}
+            onClick={() => {
+              setView(key);
+              setSearch("");
+              setStudent(null);
+              setDrill(null);
             }}
           >
-            <FilterChips
-              label="Categories"
-              options={meta?.categories ?? []}
-              selected={categories}
-              toggle={(v) => toggleArrayValue(categories, setCategories, v)}
-            />
-            <FilterChips
-              label="Houses"
-              options={(meta?.houses ?? []).map((h) => h.name)}
-              selected={houseIds
-                .map((id) => meta?.houses.find((h) => h.id === id)?.name)
-                .filter((v): v is string => !!v)}
-              toggle={(name) => {
-                const found = meta?.houses.find((h) => h.name === name);
-                if (!found) return;
-                toggleArrayValue(houseIds, setHouseIds, found.id);
-              }}
-            />
-            <FilterChips
-              label="Year level"
-              options={meta?.yearLevels ?? []}
-              selected={yearLevels}
-              toggle={(v) => toggleArrayValue(yearLevels, setYearLevels, v)}
-            />
-          </div>
-        </details>
-
-        {error && (
-          <div
-            className="section__empty"
-            style={{ marginTop: 14, color: "var(--coral-ink)" }}
-          >
-            {error}
-          </div>
-        )}
-      </section>
-
-      {agg && (
-        <section className="stat-grid" id="snapshot">
-          <Stat label="Total notes" value={agg.total} />
-          <Stat label="Watchlist" value={agg.watchlistCount} />
-          <Stat label="Sensitive" value={agg.sensitiveCount} />
-          <Stat
-            label="Top category"
-            value={topCategory?.count ?? 0}
-            sub={topCategory?.category ?? "—"}
-          />
-          <Stat
-            label="Time to serve · median"
-            value={formatDuration(agg.timeToServe.medianHours)}
-            sub={
-              agg.timeToServe.count
-                ? `avg ${formatDuration(agg.timeToServe.avgHours)} · n=${agg.timeToServe.count}`
-                : "no served items in window"
-            }
-          />
-        </section>
+            {title}
+          </button>
+        ))}
+      </nav>
+      <p className="an-muted">
+        Swiss time · {range.start} to {range.end} · {data?.rosterCount ?? "—"}{" "}
+        students on current roster
+        {data ? ` · Loaded ${stamp(data.pulledAt)}` : ""}
+      </p>
+      {loading && (
+        <div role="status" className="an-notice">
+          Loading records and matching follow-ups…
+        </div>
       )}
-
-      {agg && (
-        <section className="section" id="charts">
-          <div className="section__head">
-            <div className="section__num">№ 02</div>
-            <h2 className="section__title">
-              Visual <em>summary</em>
-            </h2>
-            <div className="section__sub">
-              Trends and breakdowns over the selected window.
-            </div>
-          </div>
-          <PastoralCharts
-            byDay={agg.byDay}
-            byCategory={agg.byCategory}
-            byHouse={agg.byHouse}
-            watchlistCount={agg.watchlistCount}
-            sensitiveCount={agg.sensitiveCount}
-          />
-        </section>
+      {error && (
+        <div role="alert" className="an-notice">
+          {error}{" "}
+          <button onClick={() => setRevision((r) => r + 1)}>Retry</button>
+        </div>
       )}
-
-      {!agg && !loading && (
-        <section className="section">
-          <div className="section__empty">
-            No data yet — pick a preset above.
-          </div>
-        </section>
+      {data?.issues.map((issue) => (
+        <div className="an-notice" key={issue}>
+          {issue}
+        </div>
+      ))}
+      {data && (
+        <>
+          {(view === "overview" || view === "consequences") && (
+            <>
+              <h2>Time to consequence served</h2>
+              <p className="an-muted">
+                Watchlist added → manually removed. Removal is the school’s
+                recorded confirmation that the consequence was served. Calendar
+                hours, including weekends.
+              </p>
+              {!data.watch?.observedAt ? (
+                <div className="an-notice">
+                  Tracking has not started. The first successful collection
+                  establishes a baseline; existing flags have an unknown start.
+                </div>
+              ) : (
+                <p className="an-notice">
+                  Tracking since {stamp(data.watch.startedAt)} · last
+                  observation {stamp(data.watch.observedAt)}. Changes are
+                  bounded between scans, so durations are shown as ranges.
+                  {Date.now() - Date.parse(data.watch.observedAt) >
+                  36 * 3600_000
+                    ? " Collection is stale; outstanding status may have changed."
+                    : ""}
+                  {Date.parse(data.end) > Date.parse(data.watch.observedAt)
+                    ? " Status after the last observation is unverified."
+                    : ""}
+                </p>
+              )}
+              <div className="an-stats">
+                <Metric
+                  label="Median time to serve"
+                  value={
+                    m
+                      ? bounds(m.medianMinHours, m.medianMaxHours)
+                      : "Unavailable"
+                  }
+                  sub={`${m?.measured ?? 0} completed episodes with bounded starts`}
+                />
+                <Metric
+                  label="Average time to serve"
+                  value={
+                    m
+                      ? bounds(m.averageMinHours, m.averageMaxHours)
+                      : "Unavailable"
+                  }
+                  sub="Observed ranges, not exact timestamps"
+                />
+                <Metric
+                  label="Within target"
+                  value={
+                    m?.withinPercent == null
+                      ? "Not yet classifiable"
+                      : `${m.withinPercent}%`
+                  }
+                  sub={`${m?.within ?? 0} within · ${m?.late ?? 0} late · ${m?.uncertain ?? 0} uncertain · ${m?.targetUnknown ?? 0} unmeasured`}
+                />
+                <Metric
+                  label="Outstanding at cutoff"
+                  value={m?.open.length ?? "—"}
+                  sub={`${m?.overdue ?? 0} definitely beyond their target`}
+                  onClick={() => setView("consequences")}
+                />
+              </div>
+              <div className="an-strip">
+                <span>
+                  <strong>{m?.added ?? "—"}</strong> additions observed
+                </span>
+                <span>
+                  <strong>{m?.served ?? "—"}</strong> removals counted as served
+                </span>
+                <span>
+                  <strong>{m?.expiryPossible ?? "—"}</strong> possible
+                  expirations excluded
+                </span>
+                <span>
+                  <strong>{m ? m.added - m.served : "—"}</strong> additions
+                  minus served
+                </span>
+              </div>
+              <p className="an-muted">
+                Period counts use observation dates. Baseline flags are excluded
+                from additions. Possible expirations and unknown starts stay
+                separate; target percentages exclude uncertain and unmeasured
+                cases. A removal observed after the cutoff may have occurred
+                before it.
+              </p>
+            </>
+          )}
+          {view === "overview" && (
+            <>
+              <div className="an-stats">
+                <Metric
+                  label="Pastoral records"
+                  value={data.pastoral?.total ?? "—"}
+                  sub={`${data.pastoral?.students ?? "—"} distinct students`}
+                  onClick={() => setView("trends")}
+                />
+                <Metric
+                  label="Conversations due"
+                  value={
+                    data.warnings?.students.filter((s) => s.dueNow).length ??
+                    "—"
+                  }
+                  sub={`Week of ${data.warnings?.week ?? "—"}; includes carry-forward`}
+                  onClick={() => setView("warnings")}
+                />
+                <Metric
+                  label="Students with rest activity"
+                  value={data.rest?.summary.students ?? "—"}
+                  sub={`${data.rest?.summary.visits ?? "—"} recorded visits`}
+                  onClick={() => setView("rest")}
+                />
+                <Metric
+                  label="Paired rest hours"
+                  value={
+                    data.rest ? data.rest.summary.totalHours.toFixed(1) : "—"
+                  }
+                  sub="Recorded paired intervals overlapping the date range"
+                  onClick={() => setView("rest")}
+                />
+              </div>
+              {data.pastoral && (
+                <Bars
+                  title="Pastoral activity by category"
+                  rows={data.pastoral.categories}
+                  onSelect={(cat) =>
+                    showRecords(cat, (r) => r.category === cat)
+                  }
+                />
+              )}
+            </>
+          )}
+          {view === "consequences" && (
+            <>
+              <h2>Eight-week backlog history</h2>
+              <DataTable
+                headers={[
+                  "Week starting",
+                  "Additions observed",
+                  "Served",
+                  "Outstanding at cutoff",
+                ]}
+                rows={Array.from({ length: 8 }, (_, i) => {
+                  const r = weekRange(new Date(data.end), i - 7);
+                  const end = new Date(
+                    Math.min(+r.end, Date.parse(data.end)),
+                  ).toISOString();
+                  const stats = watchMetrics(
+                    episodes,
+                    r.start.toISOString(),
+                    end,
+                    {},
+                  );
+                  const covered =
+                    data.watch?.startedAt &&
+                    Date.parse(data.watch.startedAt) <= +r.start;
+                  const observed =
+                    data.watch?.observedAt &&
+                    Date.parse(data.watch.observedAt) >= Date.parse(end);
+                  return [
+                    localDay(r.start),
+                    covered ? stats.added : "Partial / not tracked",
+                    covered ? stats.served : "Partial / not tracked",
+                    covered && observed
+                      ? stats.open.length
+                      : "Partial / not tracked",
+                  ];
+                })}
+              />
+              <h2>Response by consequence type</h2>
+              <DataTable
+                headers={[
+                  "Category",
+                  "Served",
+                  "Measured",
+                  "Median elapsed time",
+                  "Outstanding",
+                  "Overdue",
+                ]}
+                rows={(data.watch?.categories ?? []).map((category) => {
+                  const rows = episodes.filter(
+                    (e) => e.category.toLowerCase() === category.toLowerCase(),
+                  );
+                  const targets = Object.fromEntries(
+                    rows
+                      .map((e) => [e.category, data.watch?.targets[category]])
+                      .filter(([, v]) => v !== undefined),
+                  ) as Record<string, number>;
+                  const stats = watchMetrics(
+                    rows,
+                    data.start,
+                    data.end,
+                    targets,
+                  );
+                  return [
+                    category,
+                    stats.served,
+                    stats.measured,
+                    bounds(stats.medianMinHours, stats.medianMaxHours),
+                    stats.open.length,
+                    stats.overdue,
+                  ];
+                })}
+              />
+              <Bars
+                title="Outstanding age · verified minimum waiting time"
+                rows={[
+                  {
+                    label: "Under 24 hours",
+                    count: (m?.open ?? []).filter(
+                      (e) => waitingHours(e, data.end) < 24,
+                    ).length,
+                  },
+                  {
+                    label: "1–3 days",
+                    count: (m?.open ?? []).filter(
+                      (e) =>
+                        waitingHours(e, data.end) >= 24 &&
+                        waitingHours(e, data.end) < 72,
+                    ).length,
+                  },
+                  {
+                    label: "3–7 days",
+                    count: (m?.open ?? []).filter(
+                      (e) =>
+                        waitingHours(e, data.end) >= 72 &&
+                        waitingHours(e, data.end) < 168,
+                    ).length,
+                  },
+                  {
+                    label: "7 days or more",
+                    count: (m?.open ?? []).filter(
+                      (e) => waitingHours(e, data.end) >= 168,
+                    ).length,
+                  },
+                ]}
+                onSelect={() =>
+                  document
+                    .getElementById("an-outstanding")
+                    ?.scrollIntoView({ behavior: "smooth" })
+                }
+              />
+              <h2 id="an-outstanding">Outstanding consequences</h2>
+              <Search value={search} onChange={setSearch} />
+              <DataTable
+                headers={[
+                  "Student",
+                  "Dorm / category",
+                  "First observed flagged",
+                  "Waiting at least",
+                  "Target",
+                ]}
+                rows={(m?.open ?? [])
+                  .map((e) => ({ ...e, ...labelFor(e.id) }))
+                  .filter((e) =>
+                    matches({ name: e.name ?? "", dorm: e.dorm ?? "" }),
+                  )
+                  .sort((a, b) => a.startBy.localeCompare(b.startBy))
+                  .map((e) => [
+                    nameButton(e.studentId, e.name ?? "Unknown student"),
+                    `${e.dorm} · ${e.category}`,
+                    <>
+                      {stamp(e.startBy)}
+                      {!e.startAfter && <small>Start unknown · baseline</small>}
+                    </>,
+                    <>
+                      {hours(waitingHours(e, data.end))}
+                      <small>Verified through {stamp(e.activeThrough)}</small>
+                    </>,
+                    data.watch?.targets[e.category]
+                      ? hours(data.watch.targets[e.category])
+                      : "Not set",
+                  ])}
+                empty="No outstanding cases in the available observations."
+              />
+              <h2>Removals observed in this period</h2>
+              <DataTable
+                headers={[
+                  "Student",
+                  "Category",
+                  "Removal observed",
+                  "Time on watchlist",
+                  "Outcome",
+                ]}
+                rows={(m?.closed ?? [])
+                  .map((e) => ({ ...e, ...labelFor(e.id) }))
+                  .filter((e) =>
+                    matches({ name: e.name ?? "", dorm: e.dorm ?? "" }),
+                  )
+                  .map((e) => {
+                    const d = durationBounds(e);
+                    return [
+                      nameButton(e.studentId, e.name ?? "Unknown student"),
+                      e.category,
+                      stamp(e.endBy),
+                      d ? bounds(d.minHours, d.maxHours) : "Start unknown",
+                      e.outcome === "served"
+                        ? "Served (manual-removal workflow)"
+                        : "Possible expiry · excluded",
+                    ];
+                  })}
+              />
+              {data.admin && (
+                <details
+                  className="an-panel an-no-print"
+                  open={adminOpen}
+                  onToggle={(event) => setAdminOpen(event.currentTarget.open)}
+                >
+                  <summary>Admin · collection and response targets</summary>
+                  <p>
+                    Daily collection is scheduled at 04:00 UTC. A more frequent
+                    scheduler can call the protected collection endpoint.
+                    Targets are elapsed hours and apply to historical views too.
+                    Leave categories without a target until expectations are
+                    agreed.
+                  </p>
+                  <button
+                    className="btn btn--primary btn--sm"
+                    disabled={busy}
+                    onClick={() => mutate("POST")}
+                  >
+                    {busy ? "Working…" : "Collect watchlist now"}
+                  </button>
+                  <p>
+                    Default tracking covers early check-ins and weekend
+                    consequences. Add an exact Orah category below to include
+                    another consequence type.
+                  </p>
+                  {targetRows.map((row, i) => (
+                    <div className="an-target" key={i}>
+                      <label>
+                        Category
+                        <input
+                          list="an-categories"
+                          value={row.category}
+                          onChange={(e) =>
+                            setTargetRows(
+                              targetRows.map((r, j) =>
+                                j === i
+                                  ? { ...r, category: e.target.value }
+                                  : r,
+                              ),
+                            )
+                          }
+                        />
+                      </label>
+                      <label>
+                        Target hours
+                        <input
+                          type="number"
+                          min="1"
+                          max="8760"
+                          value={row.hours}
+                          onChange={(e) =>
+                            setTargetRows(
+                              targetRows.map((r, j) =>
+                                j === i ? { ...r, hours: e.target.value } : r,
+                              ),
+                            )
+                          }
+                        />
+                      </label>
+                      <button
+                        onClick={() =>
+                          setTargetRows(targetRows.filter((_, j) => j !== i))
+                        }
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  ))}
+                  <datalist id="an-categories">
+                    {data.watch?.categories.map((c) => (
+                      <option key={c} value={c} />
+                    ))}
+                  </datalist>
+                  <div className="an-actions">
+                    <button
+                      onClick={() =>
+                        setTargetRows([
+                          ...targetRows,
+                          { category: "", hours: "" },
+                        ])
+                      }
+                    >
+                      Add category target
+                    </button>
+                    <button disabled={busy} onClick={() => mutate("PUT")}>
+                      Save targets
+                    </button>
+                  </div>
+                  <p role="status">{status}</p>
+                </details>
+              )}
+            </>
+          )}
+          {view === "warnings" && (
+            <>
+              <h2>Warnings & conversations</h2>
+              <p className="an-muted">
+                Week of {data.warnings?.week ?? "—"}, evaluated through{" "}
+                {range.end}. Older outstanding conversations carry forward. This
+                operational week is separate from the full-period pastoral
+                totals.
+              </p>
+              <Search value={search} onChange={setSearch} />
+              <DataTable
+                headers={[
+                  "Student",
+                  "Dorm",
+                  "Level",
+                  "Warnings this week",
+                  "Unaddressed",
+                  "Follow-up",
+                ]}
+                rows={[...(data.warnings?.students ?? [])]
+                  .sort(
+                    (a, b) =>
+                      Number(b.dueNow) - Number(a.dueNow) ||
+                      b.effectiveLevel - a.effectiveLevel,
+                  )
+                  .filter(matches)
+                  .map((s) => [
+                    nameButton(s.studentId, s.name),
+                    s.dorm,
+                    s.effectiveLevel,
+                    s.warningsThisWeek.length,
+                    s.warningsSinceLastConversation,
+                    s.dueNow
+                      ? "Conversation due"
+                      : s.conversation?.status === "done"
+                        ? "Conversation logged"
+                        : "Below threshold",
+                  ])}
+                empty="No matching warnings or outstanding conversations in the available data."
+              />
+              <Link
+                className="btn btn--primary btn--sm an-no-print"
+                href="/live"
+              >
+                Open Live → Warnings to log a conversation
+              </Link>
+            </>
+          )}
+          {view === "rest" && (
+            <>
+              <h2>Health Center & rest</h2>
+              {data.rest?.now && (
+                <div className="an-stats">
+                  <Metric
+                    label="In Health Center now"
+                    value={data.rest.now.health}
+                    sub="Current recorded location"
+                  />
+                  <Metric
+                    label="Resting in room now"
+                    value={data.rest.now.room}
+                    sub="Separate from Health Center occupancy"
+                  />
+                </div>
+              )}
+              <div className="an-stats">
+                <Metric
+                  label="Students in selected period"
+                  value={data.rest?.summary.students ?? "—"}
+                />
+                <Metric
+                  label="Recorded visits"
+                  value={data.rest?.summary.visits ?? "—"}
+                />
+                <Metric
+                  label="Median completed visit"
+                  value={
+                    data.rest?.summary.medianMinutes == null
+                      ? "—"
+                      : `${Math.round(data.rest.summary.medianMinutes)} min`
+                  }
+                  sub={`${data.rest?.summary.paired ?? 0} paired visits`}
+                />
+                <Metric
+                  label="Paired hours in period"
+                  value={data.rest?.summary.totalHours.toFixed(1) ?? "—"}
+                />
+              </div>
+              <p className="an-notice">
+                Only matching check-in/check-out pairs contribute to duration
+                KPIs. {data.rest?.summary.inferred ?? 0} departures inferred
+                from location changes, {data.rest?.summary.ongoing ?? 0}{" "}
+                ongoing, {data.rest?.summary.incomplete ?? 0} incomplete. These
+                are recorded location intervals, not confirmed pass durations.
+                History looks back 31 days before the selected window.
+              </p>
+              <Search value={search} onChange={setSearch} />
+              {data.rest?.now && (
+                <>
+                  <h3>Currently recorded resting</h3>
+                  <DataTable
+                    headers={["Student", "Dorm", "Location type", "Since"]}
+                    rows={data.rest.now.students
+                      .filter(matches)
+                      .map((s) => [
+                        nameButton(s.studentId, s.name),
+                        s.dorm,
+                        s.kind === "health" ? "Health Center" : "Room rest",
+                        stamp(s.since),
+                      ])}
+                  />
+                </>
+              )}
+              <DataTable
+                headers={[
+                  "Student",
+                  "Location",
+                  "Start",
+                  "End",
+                  "Recorded minutes in period",
+                  "Evidence",
+                ]}
+                rows={(data.rest?.visits ?? [])
+                  .filter(matches)
+                  .map((v) => [
+                    nameButton(v.studentId, v.name),
+                    v.location,
+                    stamp(v.start),
+                    v.end ? stamp(v.end) : "No end recorded",
+                    v.minutes === null ? "—" : Math.round(v.minutes),
+                    v.quality,
+                  ])}
+              />
+            </>
+          )}
+          {view === "trends" && (
+            <>
+              <h2>Trends & dorm comparison</h2>
+              <p className="an-muted">
+                All non-sensitive pastoral categories. Rates use the current
+                roster, including for historical records. Note volume reflects
+                recording practices as well as student activity.
+              </p>
+              {data.pastoral && (
+                <>
+                  <div className="an-charts">
+                    <Bars
+                      title="Categories"
+                      rows={data.pastoral.categories}
+                      onSelect={(cat) =>
+                        showRecords(cat, (r) => r.category === cat)
+                      }
+                    />
+                    <Bars
+                      title="Days in selected period"
+                      rows={data.pastoral.days}
+                      onSelect={(day) =>
+                        showRecords(
+                          day,
+                          (r) => localDay(new Date(r.date)) === day,
+                        )
+                      }
+                    />
+                  </div>
+                  <Bars
+                    title="Eight-week context ending at cutoff (last week may be partial)"
+                    rows={data.pastoral.weeks}
+                    onSelect={(week) => {
+                      const r = weekRange(new Date(`${week}T12:00:00Z`));
+                      setRange({
+                        start: localDay(r.start),
+                        end: localDay(new Date(Math.min(+r.end, Date.now()))),
+                      });
+                    }}
+                  />
+                  <DataTable
+                    headers={[
+                      "Dorm",
+                      "Records",
+                      "Distinct students",
+                      "Current roster",
+                      "Records per 100 students",
+                    ]}
+                    rows={data.pastoral.dorms.map((d) => [
+                      <button
+                        className="an-link"
+                        onClick={() =>
+                          setDorm(
+                            String(
+                              houses.find((h) => h.name === d.label)?.id ?? "",
+                            ),
+                          )
+                        }
+                      >
+                        {d.label}
+                      </button>,
+                      d.count,
+                      d.students,
+                      d.roster,
+                      d.per100 ?? "—",
+                    ])}
+                  />
+                  <p className="an-muted">
+                    Select a category or day to inspect records. Select a week
+                    to load that week. Select a dorm to focus all views.
+                  </p>
+                </>
+              )}
+            </>
+          )}
+          {(student !== null || drill) && (
+            <section
+              id="an-details"
+              className="an-detail"
+              aria-label="Selected records"
+            >
+              <div className="an-detail-head">
+                <h2>{student !== null ? studentName : drill?.title}</h2>
+                <button
+                  onClick={() => {
+                    setStudent(null);
+                    setDrill(null);
+                  }}
+                >
+                  Close details
+                </button>
+              </div>
+              <DataTable
+                headers={["Student", "Date", "Category", "Record"]}
+                rows={records.map((r) => [
+                  nameButton(r.studentId, r.name),
+                  stamp(r.date),
+                  r.category,
+                  r.description,
+                ])}
+              />
+              {student !== null && (
+                <>
+                  <h3>Recorded consequences</h3>
+                  <DataTable
+                    headers={["Category", "First observed", "Removal observed"]}
+                    rows={episodes
+                      .filter(
+                        (e) =>
+                          e.studentId === student &&
+                          Date.parse(e.startBy) <= Date.parse(data.end),
+                      )
+                      .map((e) => [
+                        e.category,
+                        stamp(e.startBy),
+                        e.endBy && Date.parse(e.endBy) <= Date.parse(data.end)
+                          ? stamp(e.endBy)
+                          : "Outstanding at cutoff",
+                      ])}
+                  />
+                  <h3>Rest activity in this period</h3>
+                  <DataTable
+                    headers={["Location", "Start", "End", "Evidence"]}
+                    rows={(data.rest?.visits ?? [])
+                      .filter((v) => v.studentId === student)
+                      .map((v) => [
+                        v.location,
+                        stamp(v.start),
+                        stamp(v.end),
+                        v.quality,
+                      ])}
+                  />
+                  {data.warnings?.students
+                    .filter((s) => s.studentId === student)
+                    .map((s) => (
+                      <div key={s.studentId}>
+                        <h3>Warning follow-up · level {s.effectiveLevel}</h3>
+                        <p>
+                          {s.dueNow
+                            ? "Conversation due"
+                            : "No conversation currently due"}{" "}
+                          · Last conversation: {stamp(s.lastConversationAt)}
+                        </p>
+                        {s.conversation?.response && (
+                          <p>{s.conversation.response}</p>
+                        )}
+                      </div>
+                    ))}
+                  <Link href="/live">Open Live dashboard for follow-up</Link>
+                </>
+              )}
+            </section>
+          )}
+        </>
       )}
-
-      <ResolutionPanel
-        startISO={fromDateInput(startDate)}
-        endISO={fromDateInput(endDate, true)}
-      />
+      <footer className="an-muted">
+        Confidential · {viewerEmail} · Current dorm membership is used
+        throughout. Missing data is shown explicitly. Attendance imports are not
+        required.
+      </footer>
     </div>
   );
 }
-
-function formatDuration(hours: number | null): string {
-  if (hours === null || !Number.isFinite(hours)) return "—";
-  if (hours < 1) {
-    const mins = Math.max(1, Math.round(hours * 60));
-    return `${mins}m`;
-  }
-  if (hours < 48) return `${hours.toFixed(1)}h`;
-  return `${(hours / 24).toFixed(1)}d`;
-}
-
-function Stat({
+function Metric({
   label,
   value,
   sub,
+  onClick,
 }: {
   label: string;
-  value: number | string;
+  value: string | number;
   sub?: string;
+  onClick?: () => void;
 }) {
   return (
-    <div className="stat">
-      <div className="stat__value">{value}</div>
-      <div className="stat__label">{label}</div>
-      {sub && (
-        <div
-          className="stat__label"
-          style={{ marginTop: 2, color: "var(--ink-4)", textTransform: "none" }}
-        >
-          {sub}
-        </div>
+    <div className="an-metric">
+      <div className="an-metric-label">{label}</div>
+      {onClick ? (
+        <button onClick={onClick}>
+          {value} <span aria-hidden>↗</span>
+        </button>
+      ) : (
+        <strong>{value}</strong>
       )}
+      {sub && <small>{sub}</small>}
     </div>
   );
 }
-
-function FilterChips({
-  label,
-  options,
-  selected,
-  toggle,
+function Search({
+  value,
+  onChange,
 }: {
-  label: string;
-  options: string[];
-  selected: string[];
-  toggle: (v: string) => void;
+  value: string;
+  onChange: (v: string) => void;
 }) {
   return (
-    <div>
-      <div
-        style={{
-          fontFamily: "var(--mono)",
-          fontSize: 11,
-          textTransform: "uppercase",
-          letterSpacing: "0.1em",
-          color: "var(--ink-3)",
-          marginBottom: 6,
-        }}
-      >
-        {label}
-        {selected.length > 0 && ` · ${selected.length} selected`}
-      </div>
-      <div
-        style={{
-          display: "flex",
-          flexWrap: "wrap",
-          gap: 6,
-          maxHeight: 120,
-          overflowY: "auto",
-        }}
-      >
-        {options.length === 0 ? (
-          <span style={{ color: "var(--ink-4)", fontSize: 12 }}>
-            (none in window)
-          </span>
-        ) : (
-          options.map((opt) => {
-            const on = selected.includes(opt);
-            return (
-              <button
-                type="button"
-                key={opt}
-                onClick={() => toggle(opt)}
-                style={{
-                  padding: "4px 10px",
-                  fontSize: 12,
-                  fontFamily: "var(--mono)",
-                  border: `1px solid ${on ? "var(--ink)" : "var(--rule)"}`,
-                  background: on ? "var(--ink)" : "var(--paper-2)",
-                  color: on ? "var(--paper)" : "var(--ink-2)",
-                  cursor: "pointer",
-                  borderRadius: "var(--radius)",
-                }}
-              >
-                {opt}
+    <label className="an-search an-no-print">
+      Find a student
+      <input
+        type="search"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder="Name or dorm"
+      />
+    </label>
+  );
+}
+function Bars({
+  title,
+  rows,
+  onSelect,
+}: {
+  title: string;
+  rows: { label: string; count: number }[];
+  onSelect: (label: string) => void;
+}) {
+  const max = Math.max(1, ...rows.map((r) => r.count));
+  return (
+    <section className="an-panel">
+      <h3>{title}</h3>
+      {!rows.length ? (
+        <p>No matching records.</p>
+      ) : (
+        rows.map((r) => (
+          <button
+            className="an-bar"
+            key={r.label}
+            onClick={() => onSelect(r.label)}
+            aria-label={`${r.label}: ${r.count} records`}
+          >
+            <span>{r.label}</span>
+            <span className="an-track">
+              <i style={{ width: `${(r.count / max) * 100}%` }} />
+            </span>
+            <strong>{r.count}</strong>
+          </button>
+        ))
+      )}
+    </section>
+  );
+}
+function DataTable({
+  headers,
+  rows,
+  empty = "No matching records.",
+}: {
+  headers: string[];
+  rows: React.ReactNode[][];
+  empty?: string;
+}) {
+  const [page, setPage] = useState(0);
+  const pages = Math.ceil(rows.length / 25);
+  const current = Math.min(page, Math.max(0, pages - 1));
+  return (
+    <div className="an-table-wrap">
+      {rows.length ? (
+        <>
+          <table className="an-table">
+            <thead>
+              <tr>
+                {headers.map((h) => (
+                  <th key={h}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {rows.slice(current * 25, current * 25 + 25).map((row, i) => (
+                <tr key={i}>
+                  {row.map((cell, j) => (
+                    <td key={j}>{cell}</td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {pages > 1 && (
+            <div className="an-pagination">
+              <button disabled={!current} onClick={() => setPage(current - 1)}>
+                Previous
               </button>
-            );
-          })
-        )}
-      </div>
+              <span>
+                Page {current + 1} of {pages} · {rows.length} records · print
+                includes this page
+              </span>
+              <button
+                disabled={current === pages - 1}
+                onClick={() => setPage(current + 1)}
+              >
+                Next
+              </button>
+            </div>
+          )}
+        </>
+      ) : (
+        <p className="an-empty">{empty}</p>
+      )}
     </div>
   );
 }

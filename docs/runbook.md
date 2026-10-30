@@ -403,3 +403,8 @@ rewrites** that tab rather than duplicating it.
 
 See [weekly-reports.md](weekly-reports.md) for report administrator access,
 recipient settings, scheduling, analytics definitions, previews and send recovery.
+
+## Dorm insights
+
+[Analytics and watchlist collection](dorm-analytics.md) documents response targets,
+scheduling, timing uncertainty, rest interval evidence, access and production checks.

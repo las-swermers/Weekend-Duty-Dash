@@ -11,6 +11,9 @@ import {
 import { aggregateDorm } from "./analytics";
 import { isCompleteWeek } from "./config";
 import type { ReportData, Subscription } from "./types";
+import { restVisits, restSummary } from "@/lib/analytics/rest";
+import { getTracking, getTargets } from "@/lib/analytics/tracking";
+import { watchMetrics } from "@/lib/analytics/watchlist";
 
 export async function buildReport(
   s: Subscription,
@@ -52,7 +55,7 @@ export async function buildReport(
         { pageSize: 500, maxPages: 80, revalidate: 60, requireComplete: true },
       ),
       listLocationRecordTimeline(
-        range.start.toISOString(),
+        new Date(+range.start - 31 * 86400_000).toISOString(),
         range.end.toISOString(),
         { pageSize: 500, maxPages: 80, revalidate: 60, requireComplete: true },
       ),
@@ -67,10 +70,11 @@ export async function buildReport(
       .split(",")
       .filter((s) => /^\d+$/.test(s.trim()))
       .map(Number);
+    const activeStudents = students.filter((student) => !student.deactivated);
     report.analytics = aggregateDorm(
       records,
       movements,
-      students,
+      activeStudents,
       s.dormId,
       key,
       s.expanded,
@@ -78,6 +82,56 @@ export async function buildReport(
       restIds,
       process.env.HC_REST_LOCATION_PATTERN ?? "rest",
     );
+    const roster = new Set(
+      activeStudents
+        .filter((student) => student.house?.id === s.dormId)
+        .map((student) => student.id),
+    );
+    report.analytics.restSummary = restSummary(
+      restVisits(
+        movements.filter((r) => roster.has(r.student.id)),
+        range.start.toISOString(),
+        range.end.toISOString(),
+        hc.ids,
+        restIds,
+        process.env.HC_REST_LOCATION_PATTERN ?? "rest",
+      ),
+    );
+    try {
+      const [tracking, settings] = await Promise.all([
+        getTracking(),
+        getTargets(),
+      ]);
+      if (tracking) {
+        const episodes = tracking.episodes.filter((e) =>
+          roster.has(e.studentId),
+        );
+        const targets = Object.fromEntries(
+          episodes.flatMap((e) => {
+            const entry = Object.entries(settings.targets).find(
+              ([c]) => c.toLowerCase() === e.category.toLowerCase(),
+            );
+            return entry ? [[e.category, entry[1]]] : [];
+          }),
+        );
+        report.watchlist = {
+          observedAt: tracking.observedAt,
+          metrics: watchMetrics(
+            episodes,
+            range.start.toISOString(),
+            range.end.toISOString(),
+            targets,
+          ),
+        };
+        report.watchlistNote =
+          "Observed transitions only; baseline starts are unknown. Targets reflect the current settings. Possible expirations and uncertain target results are excluded. Status after the last observation is unverified.";
+      } else
+        report.watchlistNote =
+          "Watchlist tracking has not started; no completion timings are available.";
+    } catch {
+      report.watchlistNote =
+        "Watchlist history unavailable; no completion timings assumed.";
+    }
   }
   return report;
 }

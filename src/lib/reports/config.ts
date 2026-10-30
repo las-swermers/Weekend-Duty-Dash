@@ -101,6 +101,8 @@ export function isDue(s: Subscription, now = new Date()): boolean {
 }
 
 export function safeReportCallback(value: string | undefined): string {
+  if (value && /^\/analytics(?:\?[a-zA-Z0-9=&%_-]*)?$/.test(value))
+    return value;
   return value &&
     (/^\/api\/reports\/[a-zA-Z0-9_-]{1,100}$/.test(value) ||
       value === "/admin/reports")

@@ -79,6 +79,44 @@ export function renderReport(
   if (data.analytics) {
     const a = data.analytics;
     body += `<h2>Dorm analytics</h2><p><strong>${a.total}</strong> pastoral records · <strong>${a.uniqueStudents}</strong> students · <strong>${a.restCheckins}</strong> rest/health-center check-ins (${a.restingStudents} students)</p>`;
+    if (a.restSummary) {
+      const r = a.restSummary;
+      body += `<h3>Recorded rest intervals</h3><p>${r.students} distinct students with activity · ${r.paired} paired visits · ${r.totalHours.toFixed(1)} paired hours overlapping this week · median completed visit ${r.medianMinutes === null ? "unavailable" : `${Math.round(r.medianMinutes)} minutes`}.</p><p>${r.inferred} inferred departures and ${r.incomplete} incomplete visits excluded from duration totals. Historical reconstruction looks back 31 days. Location intervals are not confirmed pass durations.</p>`;
+    }
+    if (data.watchlist) {
+      const w = data.watchlist.metrics;
+      const duration = (lo: number | null, hi: number | null) =>
+        lo === null || hi === null
+          ? "Not yet measured"
+          : `${lo.toFixed(1)}–${hi.toFixed(1)} hours`;
+      body += `<h3>Time to consequence served</h3><p>Watchlist addition to manual removal. Last successful observation: ${e(when(data.watchlist.observedAt))}.</p>`;
+      body += table(
+        ["Measure", "Observed result"],
+        [
+          [
+            "Median time to serve",
+            duration(w.medianMinHours, w.medianMaxHours),
+          ],
+          [
+            "Average time to serve",
+            duration(w.averageMinHours, w.averageMaxHours),
+          ],
+          ["Completed episodes with bounded starts", w.measured],
+          [
+            "Within current target (classifiable cases only)",
+            w.withinPercent === null
+              ? "Not yet measured"
+              : `${w.withinPercent}% (${w.within} within; ${w.late} late; ${w.uncertain} uncertain; ${w.targetUnknown} unmeasured)`,
+          ],
+          ["Outstanding at cutoff (observed status)", w.open.length],
+          ["Definitely beyond target", w.overdue],
+          ["Newly flagged / served in period", `${w.added} / ${w.served}`],
+          ["Possible expirations excluded", w.expiryPossible],
+        ],
+      );
+    }
+    if (data.watchlistNote)
+      body += `<p style="font-size:12px;color:#52695f">${e(data.watchlistNote)}</p>`;
     body +=
       bars("Pastoral records by category", a.categories) +
       bars("Pastoral records by day", a.daily) +
@@ -97,7 +135,7 @@ export function renderReport(
             )
           : "<p>No matching check-ins or check-outs recorded this week.</p>"
       }`;
-    body += `<p style="font-size:12px;color:#52695f">Scope: ${data.expanded ? "all non-sensitive pastoral categories available through the existing Orah integration" : "dashboard warning, early check-in, weekend infraction and no-PA categories"}. Rest activity counts recorded movements, not diagnoses, confirmed durations, or students continuously resting without a movement in this week. Counts use students’ current dorm assignments and are not adjusted for dorm size. Zero means no matching records were returned, not proof that no events occurred.</p>`;
+    body += `<p style="font-size:12px;color:#52695f">Scope: ${data.expanded ? "all non-sensitive pastoral categories available through the existing Orah integration" : "dashboard warning, early check-in, weekend infraction and no-PA categories"}. Check-in totals count movements in this week; paired rest hours use the separate interval calculation above. Counts use students’ current dorm assignments and are not adjusted for dorm size. Zero means no matching records were returned, not proof that no events occurred.</p>`;
   }
   body += `<hr style="border:0;border-top:1px solid #dde3df;margin-top:30px"><p style="font-size:11px;color:#52695f">Confidential · intended recipients only. Generated ${e(when(data.generatedAt))}. Sensitive pastoral records are excluded. Snapshot retained for 90 days.</p>`;
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${e(data.dorm)} weekly review</title><style>@media print{.no-print{display:none}body{background:white!important}thead{display:table-header-group}tr{break-inside:avoid}h2,h3{break-after:avoid}}</style></head><body style="margin:0;padding:24px;background:#f4f5f1;color:#213e32;font-family:Arial,sans-serif;line-height:1.5"><main style="max-width:900px;margin:auto;padding:28px;background:white">${body}</main></body></html>`;
@@ -121,10 +159,23 @@ export function renderText(data: ReportData, url: string): string {
       "Eight-week trend:",
       ...data.analytics.trend.map((c) => `${c.label}: ${c.count}`),
     );
+    const rest = data.analytics.restSummary;
+    if (rest)
+      lines.push(
+        `Paired rest hours: ${rest.totalHours.toFixed(1)}; ${rest.paired} paired visits; ${rest.incomplete} incomplete; ${rest.inferred} inferred departures excluded.`,
+      );
+    if (data.watchlist) {
+      const w = data.watchlist.metrics;
+      lines.push(
+        `Consequences: ${w.added} additions observed; ${w.served} removals counted as served; ${w.open.length} outstanding at cutoff; ${w.overdue} definitely beyond target.`,
+        `Median elapsed hours: ${w.medianMinHours === null ? "unavailable" : `${w.medianMinHours.toFixed(1)}–${w.medianMaxHours!.toFixed(1)}`}; ${w.measured} bounded episodes. Last observation: ${when(data.watchlist.observedAt)}.`,
+      );
+    }
+    if (data.watchlistNote) lines.push(data.watchlistNote);
   }
   return [
     ...lines,
     `Printable report (school sign-in required): ${url}`,
-    "Confidential. Sensitive pastoral records excluded. Rest counts are recorded check-ins, not diagnoses or durations.",
+    "Confidential. Sensitive pastoral records excluded. Rest durations use paired location events, not confirmed pass durations.",
   ].join("\n");
 }

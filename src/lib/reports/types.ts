@@ -1,4 +1,6 @@
 import type { WarningsResponse } from "@/types/warnings";
+import type { restSummary } from "@/lib/analytics/rest";
+import type { watchMetrics } from "@/lib/analytics/watchlist";
 
 export interface Subscription {
   id: string;
@@ -19,6 +21,7 @@ export interface Count {
   count: number;
 }
 export interface DormAnalytics {
+  restSummary?: ReturnType<typeof restSummary>;
   total: number;
   uniqueStudents: number;
   categories: Count[];
@@ -34,6 +37,8 @@ export interface DormAnalytics {
   }[];
 }
 export interface ReportData {
+  watchlist?: { observedAt: string; metrics: ReturnType<typeof watchMetrics> };
+  watchlistNote?: string;
   name: string;
   dorm: string;
   week: string;

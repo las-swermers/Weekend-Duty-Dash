@@ -184,9 +184,9 @@ export async function listLocationRecordTimeline(
           date_range: endISO
             ? { start_date: startISO, end_date: endISO }
             : { start_date: startISO },
+          page_size: pageSize,
+          page_index: page,
         },
-        page_size: pageSize,
-        page_index: page,
       },
       { revalidate: opts.revalidate },
     );
@@ -243,9 +243,9 @@ export async function listPastoralTimeline(
           date_range: endISO
             ? { start_date: startISO, end_date: endISO }
             : { start_date: startISO },
+          page_size: pageSize,
+          page_index: page,
         },
-        page_size: pageSize,
-        page_index: page,
       },
       { revalidate: opts.revalidate },
     );

@@ -101,7 +101,7 @@ export function aggregateDorm(
       name: studentDisplayName(roster.get(r.student.id)).full,
       when: r.record_time,
       location: r.location.name,
-      action: r.type === "in" ? "Check-in" : "Check-out",
+      action: r.type === "in" ? "Check-in" : r.type === "out" ? "Check-out" : "In transit",
     });
   }
   restEvents.sort((a, b) => a.when.localeCompare(b.when));

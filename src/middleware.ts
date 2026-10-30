@@ -3,7 +3,11 @@ import { auth } from "@/lib/auth";
 
 export default auth((req) => {
   // This exact endpoint authenticates CRON_SECRET in its own handler.
-  if (req.nextUrl.pathname === "/api/cron/weekly-reports")
+  if (
+    ["/api/cron/weekly-reports", "/api/cron/watchlist-sync"].includes(
+      req.nextUrl.pathname,
+    )
+  )
     return NextResponse.next();
   if (!req.auth && !req.nextUrl.pathname.startsWith("/signin")) {
     const signInUrl = new URL("/signin", req.url);
