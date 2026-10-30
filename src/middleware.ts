@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 
 export default auth((req) => {
+  // Only this exact public page uses fictional fixtures. APIs remain protected.
+  if (req.nextUrl.pathname === "/demo") return NextResponse.next();
   // This exact endpoint authenticates CRON_SECRET in its own handler.
   if (
     ["/api/cron/weekly-reports", "/api/cron/watchlist-sync"].includes(

@@ -36,19 +36,27 @@ const bounds = (lo: number | null, hi: number | null) =>
     : hi < 96
       ? `${lo.toFixed(1)}–${hi.toFixed(1)}h`
       : `${(lo / 24).toFixed(1)}–${(hi / 24).toFixed(1)}d`;
-const initialRange = () => {
-  const r = weekRange(new Date(), -1);
+const initialRange = (now = new Date()) => {
+  const r = weekRange(now, -1);
   return { start: localDay(r.start), end: localDay(r.end) };
 };
 
 export function AnalyticsClient({
   viewerEmail,
+  demo,
 }: {
   defaultStart: string;
   defaultEnd: string;
   viewerEmail: string;
+  demo?: {
+    now: string;
+    load: (start: string, end: string, dorm: string) => AnalyticsData;
+  };
 }) {
-  const [range, setRange] = useState(initialRange);
+  const clock = () => (demo ? new Date(demo.now) : new Date());
+  const storageKey = demo ? "demo.analytics.dorm" : "analytics.dorm";
+  const defaultDorm = demo ? "9001" : "374";
+  const [range, setRange] = useState(() => initialRange(clock()));
   const [dorm, setDorm] = useState("");
   const [view, setView] = useState<View>("overview");
   const [ready, setReady] = useState(false);
@@ -72,17 +80,17 @@ export function AnalyticsClient({
     const params = new URLSearchParams(window.location.search);
     try {
       setDorm(
-        params.get("dorm") ?? localStorage.getItem("analytics.dorm") ?? "374",
+        params.get("dorm") ?? localStorage.getItem(storageKey) ?? defaultDorm,
       );
     } catch {
-      setDorm(params.get("dorm") ?? "374");
+      setDorm(params.get("dorm") ?? defaultDorm);
     }
     if (params.has("start") && params.has("end"))
       setRange({ start: params.get("start")!, end: params.get("end")! });
     const selected = params.get("view");
     if (views.some(([v]) => v === selected)) setView(selected as View);
     setReady(true);
-  }, []);
+  }, [storageKey, defaultDorm]);
   useEffect(() => {
     if (!ready) return;
     const abort = new AbortController();
@@ -93,15 +101,21 @@ export function AnalyticsClient({
     setDrill(null);
     const params = new URLSearchParams({ ...range, dorm });
     try {
-      localStorage.setItem("analytics.dorm", dorm);
+      localStorage.setItem(storageKey, dorm);
     } catch {}
-    fetch(`/api/analytics/overview?${params}`, { signal: abort.signal })
-      .then(async (r) => {
-        const j = await r.json();
-        if (!r.ok) throw new Error(j.error ?? "Could not load analytics.");
-        return j as AnalyticsData;
-      })
+    // Demo data is generated locally. It never falls back to a live endpoint.
+    const request = demo
+      ? Promise.resolve().then(() => demo.load(range.start, range.end, dorm))
+      : fetch(`/api/analytics/overview?${params}`, {
+          signal: abort.signal,
+        }).then(async (r) => {
+          const j = await r.json();
+          if (!r.ok) throw new Error(j.error ?? "Could not load analytics.");
+          return j as AnalyticsData;
+        });
+    request
       .then((j) => {
+        if (abort.signal.aborted) return;
         setData(j);
         setHouses(j.houses);
         setTargetRows(
@@ -112,21 +126,22 @@ export function AnalyticsClient({
         );
       })
       .catch((e) => {
-        if (e.name !== "AbortError") setError(e.message);
+        if (!abort.signal.aborted && e.name !== "AbortError")
+          setError(e.message);
       })
       .finally(() => {
         if (!abort.signal.aborted) setLoading(false);
       });
     return () => abort.abort();
-  }, [ready, range, dorm, revision]);
+  }, [ready, range, dorm, revision, demo, storageKey]);
   useEffect(() => {
     if (!ready) return;
     window.history.replaceState(
       null,
       "",
-      `/analytics?${new URLSearchParams({ ...range, dorm, view })}`,
+      `${demo ? "/demo" : "/analytics"}?${new URLSearchParams({ ...range, dorm, view })}`,
     );
-  }, [ready, range, dorm, view]);
+  }, [ready, range, dorm, view, demo]);
   useEffect(() => {
     if (student !== null || drill)
       document
@@ -176,17 +191,18 @@ export function AnalyticsClient({
     </button>
   );
   const preset = (kind: "this" | "last" | "four" | "eight") => {
-    const last = weekRange(new Date(), kind === "this" ? 0 : -1);
+    const last = weekRange(clock(), kind === "this" ? 0 : -1);
     const first = weekRange(
       last.start,
       kind === "four" ? -3 : kind === "eight" ? -7 : 0,
     );
     setRange({
       start: localDay(first.start),
-      end: localDay(kind === "this" ? new Date() : last.end),
+      end: localDay(kind === "this" ? clock() : last.end),
     });
   };
   async function mutate(method: "POST" | "PUT") {
+    if (demo) return;
     setBusy(true);
     setStatus("");
     try {
@@ -227,7 +243,9 @@ export function AnalyticsClient({
       <header className="masthead">
         <div>
           <div className="masthead__crest">
-            Leysin American School · Student life
+            {demo
+              ? "Fictional school · Interactive demonstration"
+              : "Leysin American School · Student life"}
           </div>
           <h1 className="masthead__title">
             Dorm <em>insights</em>
@@ -238,13 +256,40 @@ export function AnalyticsClient({
           </p>
         </div>
         <div className="masthead__actions an-no-print">
-          <ReportsAdminLink />
-          <Link className="btn btn--ghost btn--sm" href="/live">
-            Live dashboard
-          </Link>
-          <Link className="btn btn--ghost btn--sm" href="/weekend">
-            Weekend
-          </Link>
+          {demo && (
+            <a
+              className="btn btn--ghost btn--sm"
+              href="#demo-weekly-reports"
+              onClick={() =>
+                document
+                  .getElementById("demo-weekly-reports")
+                  ?.setAttribute("open", "")
+              }
+            >
+              Weekly report demo
+            </a>
+          )}
+          {!demo && <ReportsAdminLink />}
+          {!demo && (
+            <Link className="btn btn--ghost btn--sm" href="/live">
+              Live dashboard
+            </Link>
+          )}
+          {!demo && (
+            <Link className="btn btn--ghost btn--sm" href="/weekend">
+              Weekend
+            </Link>
+          )}
+          {!demo && (
+            <Link
+              className="btn btn--ghost btn--sm"
+              href={{ pathname: "/demo" }}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              Shareable demo
+            </Link>
+          )}
           <button
             className="btn btn--ghost btn--sm"
             onClick={() => window.print()}
@@ -253,6 +298,54 @@ export function AnalyticsClient({
           </button>
         </div>
       </header>
+      {demo && (
+        <section className="an-demo-banner" aria-label="About this demo">
+          <strong>DEMO · Every student, dorm and record is fictional.</strong>
+          <p>
+            Explore how a school can spot overdue follow-up, understand time to
+            consequence served, and see rest patterns. This page uses a fixed
+            sample of September–October 2026; “today” is 30 October. Nothing
+            here connects to school records or sends email.
+          </p>
+          <div className="an-presets an-no-print">
+            <button
+              onClick={() => {
+                preset("last");
+                setView("consequences");
+              }}
+            >
+              Find overdue follow-up
+            </button>
+            <button
+              onClick={() => {
+                preset("this");
+                setView("rest");
+              }}
+            >
+              See who is resting
+            </button>
+            <button
+              onClick={() => {
+                preset("four");
+                setDorm("");
+                setView("trends");
+              }}
+            >
+              Compare fictional dorms
+            </button>
+            <button
+              onClick={() => {
+                setRange(initialRange(clock()));
+                setDorm(defaultDorm);
+                setView("overview");
+                setSearch("");
+              }}
+            >
+              Reset demo
+            </button>
+          </div>
+        </section>
+      )}
       <section className="an-toolbar" aria-label="Analytics filters">
         <label>
           Dorm
@@ -262,7 +355,9 @@ export function AnalyticsClient({
             onChange={(e) => setDorm(e.target.value)}
           >
             <option value="">All dorms</option>
-            {!houses.length && dorm && <option value={dorm}>Savoy</option>}
+            {!houses.length && dorm && (
+              <option value={dorm}>{demo ? "Cedar House" : "Savoy"}</option>
+            )}
             {houses.map((h) => (
               <option key={h.id} value={h.id}>
                 {h.name}
@@ -282,7 +377,7 @@ export function AnalyticsClient({
           Through
           <input
             type="date"
-            max={localDay(new Date())}
+            max={localDay(clock())}
             value={range.end}
             onChange={(e) => setRange({ ...range, end: e.target.value })}
           />
@@ -358,8 +453,7 @@ export function AnalyticsClient({
                   Tracking since {stamp(data.watch.startedAt)} · last
                   observation {stamp(data.watch.observedAt)}. Changes are
                   bounded between scans, so durations are shown as ranges.
-                  {Date.now() - Date.parse(data.watch.observedAt) >
-                  36 * 3600_000
+                  {+clock() - Date.parse(data.watch.observedAt) > 36 * 3600_000
                     ? " Collection is stale; outstanding status may have changed."
                     : ""}
                   {Date.parse(data.end) > Date.parse(data.watch.observedAt)
@@ -641,7 +735,7 @@ export function AnalyticsClient({
                     ];
                   })}
               />
-              {data.admin && (
+              {data.admin && !demo && (
                 <details
                   className="an-panel an-no-print"
                   open={adminOpen}
@@ -775,12 +869,20 @@ export function AnalyticsClient({
                   ])}
                 empty="No matching warnings or outstanding conversations in the available data."
               />
-              <Link
-                className="btn btn--primary btn--sm an-no-print"
-                href="/live"
-              >
-                Open Live → Warnings to log a conversation
-              </Link>
+              {demo ? (
+                <p className="an-notice">
+                  In the school dashboard, authorised staff can open Live →
+                  Warnings to log a follow-up conversation. This demo is
+                  read-only.
+                </p>
+              ) : (
+                <Link
+                  className="btn btn--primary btn--sm an-no-print"
+                  href="/live"
+                >
+                  Open Live → Warnings to log a conversation
+                </Link>
+              )}
             </>
           )}
           {view === "rest" && (
@@ -906,7 +1008,7 @@ export function AnalyticsClient({
                       const r = weekRange(new Date(`${week}T12:00:00Z`));
                       setRange({
                         start: localDay(r.start),
-                        end: localDay(new Date(Math.min(+r.end, Date.now()))),
+                        end: localDay(new Date(Math.min(+r.end, +clock()))),
                       });
                     }}
                   />
@@ -1018,7 +1120,9 @@ export function AnalyticsClient({
                         )}
                       </div>
                     ))}
-                  <Link href="/live">Open Live dashboard for follow-up</Link>
+                  {!demo && (
+                    <Link href="/live">Open Live dashboard for follow-up</Link>
+                  )}
                 </>
               )}
             </section>
@@ -1026,9 +1130,15 @@ export function AnalyticsClient({
         </>
       )}
       <footer className="an-muted">
-        Confidential · {viewerEmail} · Current dorm membership is used
-        throughout. Missing data is shown explicitly. Attendance imports are not
-        required.
+        {demo ? (
+          "DEMO · Fictional data only · Safe to share. Example targets are illustrative, not school policy."
+        ) : (
+          <>
+            Confidential · {viewerEmail} · Current dorm membership is used
+            throughout. Missing data is shown explicitly. Attendance imports are
+            not required.
+          </>
+        )}
       </footer>
     </div>
   );
